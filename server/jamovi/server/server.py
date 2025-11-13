@@ -86,8 +86,34 @@ class StaticFileHandler(TornadosStaticFileHandler):
         TornadosStaticFileHandler.__init__(self, *args, **kwargs)
 
     def set_extra_headers(self, path):
+        # Allow dynamic adjustment of headers (notably CSP) when behind a reverse
+        # proxy that forwards public host, proto and prefix via X-Forwarded-*.
+        forwarded = None
+        try:
+            forwarded = self.request.headers.get('X-Forwarded-Host') or self.request.headers.get('Host')
+            proto = self.request.headers.get('X-Forwarded-Proto', None)
+        except Exception:
+            forwarded = None
+            proto = None
+
         for key, value in self._extra_headers.items():
-            self.set_header(key, value)
+            if key.lower() == 'content-security-policy' and forwarded:
+                # Build host entry with scheme if proto provided, otherwise leave
+                # as host[:port]. Use scheme-host in CSP to be explicit when TLS
+                # termination occurs at the proxy.
+                host_entry = f"{proto}://{ forwarded }" if proto else forwarded
+                csp = (
+                    "default-src 'self';"
+                    "font-src 'self' data:;"
+                    "img-src 'self' data:;"
+                    "script-src 'self' 'unsafe-eval' 'unsafe-inline';"
+                    "style-src 'self' 'unsafe-inline';"
+                    f"frame-src 'self' { host_entry } https://www.jamovi.org;"
+                    "connect-src 'self' data:;"
+                )
+                self.set_header(key, csp)
+            else:
+                self.set_header(key, value)
 
 
 class SessHandler(RequestHandler):
@@ -480,6 +506,40 @@ class PDFConverter(RequestHandler):
         return self._future
 
 
+def build_public_roots(roots, headers):
+    """Given configured internal `roots` and incoming request `headers`,
+    build public-facing roots honoring standard reverse-proxy headers.
+
+    - X-Forwarded-Host overrides Host
+    - X-Forwarded-Proto sets the scheme (http/https)
+    - X-Forwarded-Prefix is prepended to the path to support subpath mounts
+    """
+    forwarded = headers.get('X-Forwarded-Host') or headers.get('Host')
+    proto = headers.get('X-Forwarded-Proto', None)
+    prefix = headers.get('X-Forwarded-Prefix', '')
+
+    if not forwarded:
+        return list(roots)
+
+    new_roots = []
+    for r in roots:
+        parsed = urlparse('//' + r)
+        orig_path = parsed.path or ''
+        if prefix:
+            p = prefix.rstrip('/')
+            if not p.startswith('/'):
+                p = '/' + p
+            path = p + orig_path
+        else:
+            path = orig_path
+        if proto:
+            new_roots.append(f'{ proto }://{ forwarded }{ path }')
+        else:
+            new_roots.append(f'{ forwarded }{ path }')
+
+    return new_roots
+
+
 class DatasetsList(SessHandler):
 
     def get(self):
@@ -569,8 +629,14 @@ class ConfigJSHandler(RequestHandler):
         self._roots = roots
 
     def get(self):
+        # Build public-facing roots based on proxy headers (testable helper)
+        headers = { k: v for k, v in self.request.headers.items() }
+        new_roots = build_public_roots(self._roots, headers)
+
+        # Write config so the client knows the public-facing base roots.
         self.set_header('Content-Type', 'application/javascript')
-        self.write(f'window.config = {{"client":{{"roots":["{ self._roots[0] }","{ self._roots[1] }","{ self._roots[2] }"]}}}}')
+        self.write('window.config = {"client":{"roots":[' +
+                   ','.join([f'"{r}"' for r in new_roots]) + ']}}')
 
 
 class Server:

@@ -1,6 +1,7 @@
 
 import sys
 import signal
+import os
 from http.client import HTTPConnection
 from asyncio import get_event_loop
 
@@ -45,6 +46,15 @@ async def main():  # run down below()
         port = int(sys.argv[1])
     except Exception:
         port = 1337
+
+    # Allow overriding the listen port via environment variable so deployments
+    # behind reverse proxies / container platforms can bind to a stable port.
+    env_port = os.environ.get('JAMOVI_LISTEN_PORT')
+    if env_port:
+        try:
+            port = int(env_port)
+        except ValueError:
+            pass
 
     session_id = conf.get('session_id', None)
 
