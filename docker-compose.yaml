@@ -43,7 +43,11 @@ services:
       - '41339:41339'
     command: ["/usr/bin/python3 -u -m jamovi.server 41337 --if=*"]
     stdin_open: true
-    stop_grace_period: 0.1s
+    # Stop grace period must be an integer duration supported by the Docker API.
+    # Using a fractional value (e.g. 0.1s) causes an error in some compose/engine
+    # implementations: `cannot unmarshal number 0.1 into Go struct field CreateRequest.StopTimeout of type int`.
+    # Use 1s (one second) or an integer number of seconds instead.
+    stop_grace_period: 1s
     environment:
 
         # for development, use the vite dev server
