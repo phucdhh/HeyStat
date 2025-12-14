@@ -13,6 +13,13 @@ const etron = window.electronAPI || {};
 const APP_NAME = 'jamovi';
 
 function resolveUrl(root) {
+    // Check if root already has a protocol (from proxy headers)
+    if (root.startsWith('http://') || root.startsWith('https://')) {
+        // Root is already a full URL, just ensure trailing slash
+        return root.endsWith('/') ? root : root + '/';
+    }
+    
+    // Legacy behavior: construct URL from protocol + root
     let v = `${ window.location.protocol }//${ root }`;
     if (new URL(v).port === '' && window.location.port !== '')
         v += `:${ window.location.port }`;

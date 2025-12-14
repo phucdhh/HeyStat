@@ -40,14 +40,22 @@ def build_public_roots(roots, headers):
         except Exception:
             fwd_host = fwd.split('/')[0]
 
+        # Build URL - only add proto if present and fwd_host doesn't already have it
         if proto:
+            # Double-check fwd_host doesn't already contain a scheme
+            if '://' in fwd_host:
+                # Extract just the host part after the scheme
+                try:
+                    fwd_host = urlparse('//' + fwd_host.split('://', 1)[1]).netloc
+                except:
+                    pass
             url = f'{ proto }://{ fwd_host }{ path }'
         else:
             url = f'{ fwd_host }{ path }'
         
-        # Ensure trailing slash for consistency with browser expectations
-        if not url.endswith('/'):
-            url += '/'
+        # Remove trailing slash - let client handle it consistently
+        # (adding it here can cause double-slash issues)
+        url = url.rstrip('/')
         
         new_roots.append(url)
 
