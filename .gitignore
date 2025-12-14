@@ -31,3 +31,26 @@ __pycache__
 /server/jamovi/hydra/
 /modules/
 /bin/
+
+# HeyStat Mac deployment specific
+logs/
+*.log
+*.backup
+*.bak
+Documents/
+
+# Cloudflare credentials
+.cloudflared/*.json
+.cloudflared/*.pem
+.cloudflared/cert.pem
+
+# Local config
+*.local
+.env.local
+access_keys.txt
+credentials.txt
+secrets/
+
+# Docker volumes
+docker-data/
+jamovi-modules/

@@ -30,18 +30,18 @@ services:
   #     - '5173:5173'
   #     - '24678:24678'
 
-  jamovi:
-    image: jamovi/jamovi:2.7.6
-    container_name: jamovi
+  heystat:
+    image: heystat/heystat:2.7.6
+    container_name: heystat
     build:
       context: .
       dockerfile: docker/jamovi-Dockerfile
-    platform: linux/amd64
+    platform: linux/arm64
     ports:
-      - '41337:41337'
-      - '41338:41338'
-      - '41339:41339'
-    command: ["/usr/bin/python3 -u -m jamovi.server 41337 --if=*"]
+      - '42337:42337'
+      - '42338:42338'
+      - '42339:42339'
+    command: ["/usr/bin/python3 -u -m jamovi.server 42337 --if=*"]
     stdin_open: true
     # Stop grace period must be an integer duration supported by the Docker API.
     # Using a fractional value (e.g. 0.1s) causes an error in some compose/engine
@@ -57,12 +57,13 @@ services:
         # block Rj - don't enable unless you understand the risks!
         JAMOVI_ALLOW_ARBITRARY_CODE: 'false'
 
-        # for security, jamovi runs across 3 origins
+        # for security, HeyStat runs across 3 origins
         #
-        # # separate by port
-        JAMOVI_HOST_A: '127.0.0.1:41337'
-        JAMOVI_HOST_B: '127.0.0.1:41338'
-        JAMOVI_HOST_C: '127.0.0.1:41339'
+        # Using path-based separation for single domain setup
+        # Port changed to 42337 to avoid conflict with other services
+        JAMOVI_HOST_A: 'heystat.truyenthong.edu.vn:42337'
+        JAMOVI_HOST_B: 'heystat.truyenthong.edu.vn:42337/analyses'
+        JAMOVI_HOST_C: 'heystat.truyenthong.edu.vn:42337/results'
 
         # separate by host (RECOMMENDED)
         # JAMOVI_HOST_A: 'jamovi.127.0.0.1.nip.io:41337'
@@ -75,11 +76,22 @@ services:
         # JAMOVI_HOST_C: 'jamovi.127.0.0.1.nip.io:41337/results'
 
         # prevent unauthorized access
-        # JAMOVI_ACCESS_KEY: 'yourpasswordhere'
+        # Let Jamovi auto-generate access key on first access
+        # Set a stable access key for automated testing. Use a secret in production.
+        # JAMOVI_ACCESS_KEY: 'your-secret-key-here'
         # then access jamovi with ?access_key=yourpasswordhere added to the url
         # i.e. 127.0.0.1:41337/?access_key=yourpasswordhere
         # or alternatively, remove the password requirement:
-        # JAMOVI_ACCESS_KEY: ''
+        JAMOVI_ACCESS_KEY: ''
+        # Or set JAMOVI_DISABLE_ACCESS_KEY=1 (or true) to explicitly disable
+        # access-key enforcement without changing the configured value. This is
+        # handy for local testing but SHOULD NOT be used in production.
+        # JAMOVI_DISABLE_ACCESS_KEY: '1'
 
     volumes:
-      - $HOME/Documents:/root/Documents
+      - ./Documents:/root/Documents
+      - ./jamovi-modules:/root/.jamovi/modules
+      # Mount fixed public_roots.py
+      - ./server/jamovi/server/public_roots.py:/usr/lib/jamovi/server/jamovi/server/public_roots.py:ro
+      # Mount built client files to override container's default client
+      - ./client/dist:/usr/lib/jamovi/client:ro

@@ -1,12 +1,13 @@
 <!DOCTYPE html>
-<html aria-label="jamovi">
+<html aria-label="HeyStat">
 <head>
     <meta charset="utf-8" />
-    <title>jamovi</title>
+    <title>HeyStat - Statistical Analysis</title>
     <link href="main/main.css" type="text/css" rel="stylesheet">
     <script>
-        if (window.customElements === undefined)
-            window.location.href = "https://www.jamovi.org/misc/unsupported.html";
+        if (window.customElements === undefined) {
+            alert('HeyStat requires a modern browser. Please use Chrome, Firefox, Safari, or Edge.');
+        }
     </script>
     <script src="../config.js" type="text/javascript"></script>
     <script src="main/main.ts" type="module"></script>
@@ -17,7 +18,7 @@
 
     <div id="main" role="presentation">
         <div id="header" aria-hidden="true">
-            <div id="header-text" class="app-dragable">jamovi<span class="header-file-name"></span></div>
+            <div id="header-text" class="app-dragable">HeyStat<span class="header-file-name"></span></div>
             <div id="header-buttons" dir="ltr">
                 <div id="min-button" class="header-button">
                     <div class="header-button-icon"></div>

@@ -1,28 +1,56 @@
 
-# jamovi
+# HeyStat
 
-jamovi is a free and open statistics package, which is easy to use, and designed to be familiar to users of SPSS. It provides a spreadsheet editor, and a range of statistical analyses. jamovi can provide R syntax for each analysis that is run, and additional analyses for jamovi can be developed using the R language.
+**HeyStat** is a web-based statistical analysis platform, forked from [jamovi](https://www.jamovi.org).
 
-Come visit us at [jamovi.org](https://www.jamovi.org).
+## About
 
-## running
+HeyStat provides:
+- ✅ Web-based statistical analysis (no installation required)
+- ✅ Familiar interface for SPSS users
+- ✅ Vietnamese-friendly deployment
+- ✅ Educational focus for Vietnamese institutions
 
-the easiest way to build and work on jamovi, is to build it as a docker container. clone this repo (and submodules), and then build it with:
+**Built on jamovi 2.7.6** - See [FORK_NOTICE.md](FORK_NOTICE.md) for attribution.
+
+## Quick Access
+
+🌐 **Live Instance**: https://heystat.truyenthong.edu.vn
+
+## Features
+
+- Descriptive statistics, T-tests, ANOVA, regression
+- Data visualization and plotting
+- CSV/SPSS/SAS file import
+- Real-time analysis updates
+- R syntax generation
+
+## For Users
+
+### Access HeyStat
+Visit: https://heystat.truyenthong.edu.vn
+
+No installation required - works in any modern browser (Chrome, Firefox, Safari, Edge).
+
+### Documentation
+- Based on jamovi - see [jamovi user manual](https://www.jamovi.org/user-manual.html)
+- All jamovi analyses and features are available
+
+## For Developers
+
+### Quick Start with Docker
 
 ```bash
-git clone https://github.com/jamovi/jamovi.git
-cd jamovi
-git submodule update --init --recursive
+# Clone repository
+git clone [your-repo-url]
+cd HeyStat
+
+# Build and run
 docker-compose build
-```
-
-once built, it can be run with:
-
-```bash
 docker-compose up
 ```
 
-this launches an embedded web-server, and jamovi can be accessed with a web-browser at the url http://127.0.0.1:41337
+Access at: http://127.0.0.1:42337
 
 
 # Development
@@ -55,6 +83,26 @@ poetry install
 ```
 
 ## Usage
+
+### Deployment Configurations
+
+HeyStat has been optimized for:
+- **Apple Silicon (ARM64)** macOS deployment with Colima
+- **Web-based access** via Cloudflare Tunnel
+- **Port configuration**: 42337-42339 (avoids conflicts)
+- **Auto-start** via LaunchDaemon
+
+See deployment documentation:
+- [Mac Deployment Guide](README_MAC_DEPLOYMENT.md)
+- [Auto-Start Configuration](AUTOSTART_FIX.md)
+
+### Access Key for Security
+
+HeyStat can be protected with an access key via `JAMOVI_ACCESS_KEY` environment variable.
+
+- For local development: Set `JAMOVI_ACCESS_KEY=''` (empty) in `docker-compose.yaml`
+- For production: Set a strong access key
+- To disable for testing: Set `JAMOVI_DISABLE_ACCESS_KEY=1` (NOT for production)
 
 ## Activate the virtual environment
 
@@ -147,3 +195,60 @@ poetry shell
 # Find the python path for this environment
 where python
 ```
+
+## Key Differences from jamovi
+
+### Deployment
+- Optimized for **Apple Silicon (ARM64)** macOS
+- Custom **port configuration** (42337-42339) to avoid conflicts
+- **Cloudflare Tunnel** integration for public access
+- **Auto-start** LaunchDaemon for reliability
+
+### Branding
+- Application name: **HeyStat** (was: jamovi)
+- Custom domain: https://heystat.truyenthong.edu.vn
+- Vietnamese localization focus
+
+### Infrastructure
+- **Docker-based** deployment on Colima (lightweight Docker for macOS)
+- **Nginx reverse proxy** with WebSocket support
+- **Isolated Documents folder** for user data
+- **Production-ready** security configuration
+
+See [FORK_NOTICE.md](FORK_NOTICE.md) for complete fork information.
+
+## License
+
+HeyStat is licensed under **AGPL3/GPL2+**, same as jamovi.
+
+```
+Copyright (C) 2025 HeyStat Team
+Copyright (C) 2016-2024 The jamovi team
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+```
+
+See [LICENSE.md](LICENSE.md) for full license text.
+
+## Acknowledgments
+
+HeyStat is built on [jamovi](https://www.jamovi.org) by The jamovi team.
+
+We are grateful to:
+- **The jamovi team** for creating excellent open-source statistical software
+- **The R Project** and all R package developers
+- **The open-source community** for tools and libraries
+
+## Links
+
+- **jamovi**: https://www.jamovi.org (original project)
+- **jamovi Source**: https://github.com/jamovi/jamovi
+- **jamovi Community**: https://forum.jamovi.org
+- **HeyStat Live**: https://heystat.truyenthong.edu.vn
+
+---
+
+**HeyStat** - A fork of jamovi for Vietnamese educational institutions

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.heystat.complete</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mac/HeyStat/scripts/start-heystat-complete.sh</string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>StartInterval</key>
+    <integer>60</integer>
+    
+    <key>UserName</key>
+    <string>mac</string>
+    
+    <key>GroupName</key>
+    <string>staff</string>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/mac/HeyStat/logs/launchdaemon-complete.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/mac/HeyStat/logs/launchdaemon-complete-error.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/mac</string>
+    </dict>
+    
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
