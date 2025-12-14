@@ -12,7 +12,7 @@ export function registerNodeObject(node, object) {
     _registeredNodeObjs.set(node, object);
 }
 
-export function csvifyCells(cells) {
+export function csvifyCells(cells, decSymbol: '.' | ',') {
     if (cells.length === 0)
         return '';
 
@@ -28,8 +28,8 @@ export function csvifyCells(cells) {
             else if (typeof cell === 'string')
                 row += sep + '"' + cell.replace(/"/g, '""') + '"';
             else
-                row += sep + cell;
-            sep = ',';
+                row += sep + displayNum(cell, { decSymbol });
+            sep = '\t';
         }
         rows[rowNo] = row;
     }
@@ -37,7 +37,49 @@ export function csvifyCells(cells) {
     return rows.join('\n');
 }
 
-export function htmlifyCells(cells, options={}) {
+export interface IHtmlifyOptions extends IDisplayOptions {
+    generator?: string;
+}
+
+export interface IDisplayOptions {
+    decSymbol?: '.' | ',';
+}
+
+export function parseNum(value: string, options: IDisplayOptions): number | string {
+    const decimal = options.decSymbol ? options.decSymbol : '.';
+    let s = value.trim().replace(/\s/g, '');
+
+    const comma = s.includes(",");
+    const dot = s.includes(".");
+
+    if (comma && dot) {
+        const lastComma = s.lastIndexOf(",");
+        const lastDot = s.lastIndexOf(".");
+
+        if (lastComma > lastDot)
+            s = s.replace(/\./g, "").replace(",", ".");
+        else
+            s = s.replace(/,/g, "");
+    }
+    else if (comma) {
+        if (decimal === ',')
+            s = s.replace(/,/g, '.');
+        else {
+            const re = /^-?\d{1,3}(?:,\d{3})*(?:.\d+)?$/;
+            if (re.test(s))
+                s = s.replace(/,/g, "");
+        }
+    }
+
+    const number = Number(s);
+    return isNaN(number) ? value : number;
+}
+
+export function displayNum(value: number, options: IDisplayOptions) {
+    return value.toString().replace('.', options.decSymbol);
+}
+
+export function htmlifyCells(cells, options: IHtmlifyOptions={}) {
     if (cells.length === 0)
         return '';
 
@@ -52,8 +94,12 @@ export function htmlifyCells(cells, options={}) {
                 row += sep + '';
             else if (typeof cell === 'string')
                 row += sep + cell.replace('\u2212', '-');  // minus to dash
-            else
-                row += sep + cell;
+            else {
+                if (options.decSymbol)
+                    row += sep + displayNum(cell, options);
+                else
+                    row += sep + cell.toString();
+            }
             sep = '</td><td>';
         }
         row += '</td></tr>';
@@ -406,7 +452,8 @@ function _htmlify(el, options) {
                 'text-align',
                 'padding',
                 'border',
-                'vertical-align'
+                'vertical-align',
+                'font-weight'
             ];
             break;
         case 'style':
@@ -469,8 +516,11 @@ function _htmlify(el, options) {
                     }
                     else if (style === 'text-align') {
                         let value = cs.getPropertyValue(style);
-                        if (value !== 'start')
-                            html += `${ style }:${ value };`;
+                        if (value === 'start')
+                            value = 'left';
+                        else if (value === 'end')
+                            value = 'right';
+                        html += `${ style }:${ value };`;
                     }
                     else {
                         let value = cs.getPropertyValue(style);

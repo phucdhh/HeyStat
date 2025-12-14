@@ -568,7 +568,7 @@ export class Instance extends EventMap<IInstanceModel> implements IBackstageSupp
                 content = await this.attributes.resultsSupplier.getAsHTML({images:'inline', generator:app}, options.part);
             }
             else if (options.path.endsWith('.zip')) {
-                content = await this.attributes.resultsSupplier.getAsHTML({images:'relative', generator:app}, options.part);
+                content = await this.attributes.resultsSupplier.getAsLatex();
             }
             else if (options.path.endsWith('.pdf')) {
                 let images = host.isElectron ? 'absolute' : 'inline';
@@ -864,8 +864,9 @@ export class Instance extends EventMap<IInstanceModel> implements IBackstageSupp
         let ppi = Math.trunc(72 * (window.devicePixelRatio || 1));
         let theme = this._settings.getSetting('theme', Theme.DEFAULT);
         let palette = this._settings.getSetting('palette', 'jmv');
+        const decSymbol = this._settings.getSetting('decSymbol', '.');
 
-        return { '.ppi': ppi, theme: theme, palette: palette };
+        return { '.ppi': ppi, theme, palette, decSymbol };
     }
 
     async _constructAnalysisRequest(analysis, options?) {

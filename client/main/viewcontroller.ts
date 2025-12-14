@@ -4,7 +4,7 @@ import keyboardJS from 'keyboardjs';
 import host from './host';
 import Notify from './notification';
 import _dialogs from 'dialogs';
-const dialogs = _dialogs({cancel:false});
+
 import { csvifyCells, htmlifyCells } from '../common/utils/formatio';
 
 import ActionHub from './actionhub';
@@ -13,6 +13,7 @@ import focusLoop from '../common/focusloop';
 import { EventEmitter } from 'tsee';
 import DataSetViewModel, { Column, ColumnType, MeasureType } from './dataset';
 import Selection, { ISelection } from './selection';
+import Settings from './settings';
 
 export type DataSetView = HTMLElement & {
     selectionIncludesHidden?: boolean;
@@ -23,14 +24,17 @@ export type DataSetView = HTMLElement & {
 }
 
 class ViewController extends EventEmitter {
+    dialogs: any;
     model: DataSetViewModel;
     selection: Selection;
     _editNote: Notify;
     focusedOn: DataSetView;
     _modifiedFromSelection: boolean;
     _views: { [name: string]: { view: DataSetView, options: { title: string } }} = { };
-    constructor(model, selection) {
+    constructor(model, selection, public settings: Settings) {
         super();
+
+        this.dialogs = _dialogs({cancel: _('Cancel'), ok: _('Ok')});
 
         this.model = model;
         this.selection = selection;
@@ -297,7 +301,7 @@ class ViewController extends EventEmitter {
                     let column = columns[0];
                     let msg = n_(`Delete column '{columnName}'?`, 'Delete {n} columns?', columns.length, {columnName : column.name, n: columns.length });
                     focusLoop.speakMessage(msg)
-                    dialogs.confirm(msg, cb);
+                    this.dialogs.confirm(msg, cb);
                     let widget = document.body.querySelector<HTMLElement>('.dialog-widget.confirm');
                     focusLoop.addFocusLoop(widget, { level: 2, modal: true });
                     focusLoop.enterFocusLoop(widget);
@@ -351,7 +355,7 @@ class ViewController extends EventEmitter {
 
                 let msg = n_('Delete row {index}?', 'Delete {n} rows?', rowCount, { index: selections[0].top+1, n: rowCount });
                 focusLoop.speakMessage(msg);
-                dialogs.confirm(msg, cb);
+                this.dialogs.confirm(msg, cb);
                 let widget = document.body.querySelector<HTMLElement>('.dialog-widget.confirm');
                 focusLoop.addFocusLoop(widget, { level: 2, modal: true });
                 focusLoop.enterFocusLoop(widget);
@@ -475,7 +479,7 @@ class ViewController extends EventEmitter {
             let cells = await this.model.requestCells(this.selection);
             let values = cells.data[0].values;
             values = values.map(col => col.map(cell => cell.value));
-            let data = { text: csvifyCells(values), html: htmlifyCells(values) };
+            let data = { text: csvifyCells(values, this.settings.getSetting('decSymbol', '.')), html: htmlifyCells(values, { decSymbol: this.settings.getSetting('decSymbol', '.') }) };
 
             await host.copyToClipboard(data);
             this._notifyCopying();
@@ -624,7 +628,7 @@ class ViewController extends EventEmitter {
                 else {
                     let msg = _('Insert how many rows?');
                     focusLoop.speakMessage(msg);
-                    dialogs.prompt(msg, this.selection.bottom - this.selection.top + 1, (result) => {
+                    this.dialogs.prompt(msg, this.selection.bottom - this.selection.top + 1, (result) => {
                         let widget = document.body.querySelector<HTMLElement>('.dialog-widget.prompt');
                         focusLoop.leaveFocusLoop(widget);
                         if (result === undefined)
@@ -668,7 +672,7 @@ class ViewController extends EventEmitter {
             let n = await new Promise<number>((resolve, reject) => {
                 let msg = _('Append how many rows?');
                 focusLoop.speakMessage(msg);
-                dialogs.prompt(msg, '1', (result) => {
+                this.dialogs.prompt(msg, '1', (result) => {
                     let widget = document.body.querySelector<HTMLElement>('.dialog-widget.prompt');
                     focusLoop.leaveFocusLoop(widget);
                     if (result === undefined)

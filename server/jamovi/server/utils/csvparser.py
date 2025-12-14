@@ -1,10 +1,17 @@
 
 import csv
 
+from typing import Literal
+
+from . import utils
+
 
 class CSVParser:
 
-    def __init__(self):
+    _dec_symbol: Literal['.', ',']
+
+    def __init__(self, dec_symbol: Literal['.', ',']):
+        self._dec_symbol = dec_symbol
         self._result = None
         self._trim_empty_last_line = True
 
@@ -17,8 +24,14 @@ class CSVParser:
     def feed(self, data):
         try:
             dialect = csv.Sniffer().sniff(data, ',\t;')
+            if self._dec_symbol == ',' and dialect.delimiter ==',':
+                number = utils.parse_number(data, self._dec_symbol)
+                if isinstance(number, (int, float)):
+                    dialect.delimiter = ';'
         except csv.Error:
             dialect = csv.excel
+            if self._dec_symbol == ',':
+                dialect.delimiter = ';'
 
         data = data.replace('\r\n', '\n')  # normalize line endings
         data = data.replace('\r', '\n')
@@ -44,16 +57,7 @@ class CSVParser:
             n = min(len(row), n_cols)
             for col_no in range(n):
                 value = row[col_no]
-                try:
-                    value = int(value)
-                except Exception:
-                    try:
-                        value = float(value)
-                    except Exception:
-                        pass
-                if isinstance(value, str):
-                    value = value.strip()
-                cells[col_no][row_no] = value
+                cells[col_no][row_no] = utils.parse_number(value, self._dec_symbol)
             row_no += 1
 
         self._result = cells

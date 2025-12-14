@@ -1183,11 +1183,12 @@ class Instance:
         self._coms.send(response, self._instance_id)
 
     def _main_settings_changed(self, event):
-        if 'theme' in event.data or 'palette' in event.data:
+        if 'theme' in event.data or 'palette' in event.data or 'decSymbol' in event.data:
             for analysis in self._data.analyses:
                 main_settings = self._settings.group('main')
                 analysis.options.set_value('theme', main_settings.get('theme', 'default'))
                 analysis.options.set_value('palette', main_settings.get('palette', 'default'))
+                analysis.options.set_value('decSymbol', main_settings.get('decSymbol', '.'))
                 if analysis.enabled:
                     analysis.run()
 
@@ -2365,7 +2366,7 @@ class Instance:
             changes['data_changed'].add(column)
 
     def _parse_cells(self, request):
-
+        main_settings = self._settings.group('main')
         if request.incData:
             block_count = len(request.data)
             blocks = [None] * block_count
@@ -2382,13 +2383,15 @@ class Instance:
                 if block_pb.incCBData:
                     cells = None
                     if block_pb.cbHtml != '':
-                        parser = HTMLParser()
+                        dec_symbol = main_settings.get('decSymbol', '.')
+                        parser = HTMLParser(dec_symbol=dec_symbol)
                         parser.feed(block_pb.cbHtml)
                         parser.close()
                         cells = parser.result()
                         size += self._mod_tracker.get_size_of(block_pb.cbHtml)
                     else:
-                        parser = CSVParser()
+                        dec_symbol = main_settings.get('decSymbol', '.')
+                        parser = CSVParser(dec_symbol=dec_symbol)
                         parser.feed(block_pb.cbText)
                         parser.close()
                         cells = parser.result()

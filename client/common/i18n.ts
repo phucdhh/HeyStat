@@ -2,14 +2,35 @@
 
 import Jed from 'jed';
 
-function s6e(x) {
-    return x.replace(/</g, '&lt;')  //to break html insertion
-        .replace(/>/g, '&gt;')  // to really break html insertion
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")  // markdown to html
-        .replace(/__(.*?)__/g, "<strong>$1</strong>")  // markdown to html
-        .replace(/\*(.*?)\*/g, "<i>$1</i>")  // markdown to html
-        .replace(/_(.*?)_/g, "<i>$1</i>");  // markdown to html
+export function s6e(input: string): string {
+
+    // Temporarily protect allowed HTML tags
+    const allowedTags = ["i", "em", "b", "strong", "sub", "sup"] as const;
+
+    for (const tag of allowedTags) {
+        const openTag = new RegExp(`<${tag}>`, "gi");
+        const closeTag = new RegExp(`</${tag}>`, "gi");
+
+        input = input
+            .replace(openTag,  `@@@OPEN_${tag.toUpperCase()}@@@`)
+            .replace(closeTag, `@@@CLOSE_${tag.toUpperCase()}@@@`);
+    }
+
+    // Escape all other HTML brackets
+    input = input
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    // Restore the allowed tags safely
+    for (const tag of allowedTags) {
+        input = input
+            .replace(new RegExp(`@@@OPEN_${tag.toUpperCase()}@@@`, "g"), `<${tag}>`)
+            .replace(new RegExp(`@@@CLOSE_${tag.toUpperCase()}@@@`, "g"), `</${tag}>`);
+    }
+
+    return input;
 }
+
 
 // Represents the header entry ("")
 interface JedLocaleHeaders {
