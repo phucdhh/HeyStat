@@ -106,10 +106,10 @@ class StaticFileHandler(TornadosStaticFileHandler):
                     "default-src 'self';"
                     "font-src 'self' data:;"
                     "img-src 'self' data:;"
-                    "script-src 'self' 'unsafe-eval' 'unsafe-inline';"
+                    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com;"
                     "style-src 'self' 'unsafe-inline';"
                     f"frame-src 'self' { host_entry } https://www.jamovi.org;"
-                    "connect-src 'self' data:;"
+                    "connect-src 'self' data: https://cloudflareinsights.com;"
                 )
                 self.set_header(key, csp)
             else:
@@ -1012,10 +1012,10 @@ class Server:
                 default-src 'self';
                 font-src 'self' data:;
                 img-src 'self' data:;
-                script-src  'self' 'unsafe-eval' 'unsafe-inline';
+                script-src  'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com;
                 style-src 'self' 'unsafe-inline';
                 frame-src 'self' { hosts } https://www.jamovi.org;
-                connect-src 'self' data:;
+                connect-src 'self' data: https://cloudflareinsights.com;
             '''.replace('\n', '')
 
             log.info(f'listening across origin(s): { hosts }')

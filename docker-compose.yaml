@@ -36,11 +36,9 @@ services:
     build:
       context: .
       dockerfile: docker/jamovi-Dockerfile
-    platform: linux/arm64
+    platform: linux/amd64
     ports:
-      - '42337:42337'
-      - '42338:42338'
-      - '42339:42339'
+      - '42337:80'
     command: ["/usr/bin/python3 -u -m jamovi.server 42337 --if=*"]
     stdin_open: true
     # Stop grace period must be an integer duration supported by the Docker API.
@@ -61,9 +59,9 @@ services:
         #
         # Using path-based separation for single domain setup
         # Port changed to 42337 to avoid conflict with other services
-        JAMOVI_HOST_A: 'heystat.truyenthong.edu.vn:42337'
-        JAMOVI_HOST_B: 'heystat.truyenthong.edu.vn:42337/analyses'
-        JAMOVI_HOST_C: 'heystat.truyenthong.edu.vn:42337/results'
+        JAMOVI_HOST_A: 'heystat.pedu.vn'
+        JAMOVI_HOST_B: 'heystat.pedu.vn/analyses'
+        JAMOVI_HOST_C: 'heystat.pedu.vn/results'
 
         # separate by host (RECOMMENDED)
         # JAMOVI_HOST_A: 'jamovi.127.0.0.1.nip.io:41337'
