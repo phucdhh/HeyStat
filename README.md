@@ -171,6 +171,8 @@ Tests can be run with:
 poe tests
 ```
 
+## Classroom LMS
+Xem [`classroom/`](./classroom/) — module dạy học độc lập, không phải một phần của Jamovi upstream.
 
 # VSCode
 
