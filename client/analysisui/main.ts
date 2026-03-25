@@ -150,6 +150,7 @@ class Analysis {
 
         this.translate = this.translate.bind(this);
         window._ = this.translate.bind(this);
+        window.n_ = this.translateN.bind(this);
 
         const createOptionsView = new Function('ui', 'DefaultControls', 'FormatDef', 'Format', 'View', 'utils', `
     return (function() {
@@ -233,11 +234,18 @@ class Analysis {
 
     getTitle?(): string;
 
-    translate(key: string): string {
+    translate(key: string, formats?: string | (string | number)[] | { [key: string]: string | number }, options?: { prefix: string, postfix: string }): string {
         if (key === null || key === undefined || key.trim() === '')
             return key;
 
-        return this.moduleI18n._(key);
+        return this.moduleI18n._(key, formats, options);
+    }
+
+    translateN(key: string, plural: string, count: number, formats?: { [key: string]: (string|number), n?: (string|number) }): string {
+        if (key === null || key === undefined || key.trim() === '')
+            return key;
+
+        return this.moduleI18n._n(key, plural, count, formats);
     }
 };
 
@@ -320,6 +328,25 @@ function loadAnalysis(def, i18nDef: I18nData, appI18nDef: I18nData, jamoviVersio
     if (def.error) {
         $title.innerHTML = '';
         $title.append(def.error);
+
+        $optionsBlock.querySelectorAll('.placeholder-options')?.forEach(el => el.remove());
+        let $moduleDetails = HTML.parse(`<div class="module-error-details"'>
+                    <div class="top">
+                        <div class="image"></div>
+                        <h2>Module: ${def.data.moduleName} ${def.data.version}</h2>
+                    </div>
+                    <div class="msg">${s_('This module is either <em>missing or incompatible</em> with this version of jamovi.')}</div>
+                    <div class="msg">${s_('Please <em>install or update</em> this module from the jamovi library.')}</div>
+                    <div class="list">
+                        <button class="find-module">${s_('Find module in jamovi library')}</button
+                    </div>
+                </div>`);
+
+        const $findButton = $moduleDetails.querySelector('.find-module');
+        $findButton.addEventListener('click', (event) => {
+            parentFrame.send('action', { type: 'findModule' });
+        });
+        $optionsBlock.append($moduleDetails);
     }
     else {
         return requestData('columns', null, true).then(data => {

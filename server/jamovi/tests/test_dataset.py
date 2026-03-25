@@ -1,6 +1,5 @@
 """Tests for the dataset class."""
 
-from typing import TypeAlias
 import math
 
 import pytest
@@ -8,23 +7,11 @@ import pytest
 from jamovi.server.dataset import DataSet
 from jamovi.server.dataset import DataType
 
+from .conftest import equals
+
 
 NAN = float("nan")
 NAN_INT = -2147483648
-
-CellValue: TypeAlias = str | int | float | None
-
-
-def equals(x: CellValue, y: CellValue) -> bool:
-    """test if two cell values are equal"""
-    if isinstance(x, float) and isinstance(y, float):
-        if math.isnan(x):
-            return math.isnan(y)
-        if math.isnan(y):
-            return False
-        return pytest.approx(x) == y
-    else:
-        return x == y
 
 
 def test_row_modification(simple_dataset: DataSet):
@@ -61,7 +48,7 @@ def test_text(empty_dataset):
         (["123.12", "fred"], [123.12, NAN], 2),
         (["123", "456"], [123, 456], 0),
         (["123.2", "456,1"], [123.2, NAN], 1),  # euro float
-        # (["123", "456,1"], [123, 456.1], 1),  # TODO
+        (["123", "456,1"], [123, 456.1], 1),
     ],
 )
 def test_column_text_to_decimal(
@@ -92,7 +79,7 @@ def test_column_text_to_decimal(
             assert math.isnan(v2)
 
     # AND dps is updated accordingly
-    # assert column.dps == dps
+    assert column.dps == dps
 
 
 @pytest.mark.parametrize(
@@ -118,3 +105,31 @@ def test_column_data_types(
         column.set_value(i, v)
         v2 = column.get_value(i)
         assert equals(v, v2)
+
+
+def test_set_values(empty_dataset: DataSet):
+    """test set_values()"""
+    ds = empty_dataset
+
+    # GIVEN a dataset with two columns, 5 rows
+    column_fred = ds.append_column("fred")
+    column_fred.set_data_type(DataType.TEXT)
+
+    column_jim = ds.append_column("jim")
+    column_jim.set_data_type(DataType.INTEGER)
+
+    ds.set_row_count(5)
+
+    # WHEN applying values with set_values
+    values = [
+        ["x", "y", "z"],
+        [1, 2, 3],
+    ]
+
+    ds.set_values(("fred", "jim"), 0, values)
+
+    # THEN the values are applied accordingly
+    for column_index, expected_column_values in enumerate(values):
+        for row_index, expected_value in enumerate(expected_column_values):
+            obs_value = ds[column_index].get_value(row_index)
+            assert equals(obs_value, expected_value)

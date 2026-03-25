@@ -31,6 +31,16 @@ export function s6e(input: string): string {
     return input;
 }
 
+export function stringToParagraphs(input: string): string {
+    return input
+        .replace(/\r\n/g, "\n")
+        .split(/\n{2,}/)
+        .map(p => p.trim())
+        .filter(p => p.length > 0)
+        .map(p => `<p>${p}</p>`)
+        .join("");
+}
+
 
 // Represents the header entry ("")
 interface JedLocaleHeaders {
@@ -60,6 +70,9 @@ export interface I18nData {
     domain?: string; // default domain
     locale_data: JedLocaleData;
 }
+
+export type translateFunction = (key: string, formats?: string | (string | number)[] | { [key: string]: string | number }, options?: { prefix: string, postfix: string }) => string;
+export type translateNFunction = (key: string, plural: string, count: number, formats?: { [key: string]: (string|number), n?: (string|number) }) => string;
 
 export const isI18nData = function (obj: unknown): obj is I18nData {
     if (typeof obj !== "object" || obj === null) return false;
@@ -93,7 +106,7 @@ export class I18n {
         this.findBestMatchingLanguage = this.findBestMatchingLanguage.bind(this);
 
         this._availableLanguages = ['en'];
-        this.language = this.systemLanguage();
+        this.language = 'en';
     }
 
     initialise(code: string, localeData: I18nData) {

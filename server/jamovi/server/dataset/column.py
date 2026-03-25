@@ -1,10 +1,14 @@
 
 from typing import Protocol
+from typing import Iterable
 from abc import abstractmethod
 
 from .core import DataType
 from .core import ColumnType
 from .core import MeasureType
+
+
+CellValue = int | str | float
 
 
 class Column(Protocol):
@@ -219,6 +223,14 @@ class Column(Protocol):
 
     @abstractmethod
     def get_value(self, index):
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_values(self, index: int, values: Iterable[CellValue], initing=False):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_values(self, index: int, n_rows: int) -> Iterable[CellValue]:
         raise NotImplementedError
 
     @abstractmethod

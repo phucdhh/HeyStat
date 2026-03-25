@@ -52,6 +52,7 @@ class ModuleMeta:
     def __init__(self):
         self.name = None
         self.title = None
+        self.build_time = 0
         self.version = [0, 0, 0]
         self.description = None
         self.authors = [ ]
@@ -66,6 +67,7 @@ class ModuleMeta:
         self.visible = True
         self.incompatible = False
         self.i18n_msgs = None
+        self.category = None
         self._code = None
         self.index = 1
 
@@ -206,7 +208,7 @@ class Modules:
             if module.name == name:
                 return module
         raise KeyError()
-    
+
     def __contains__(self, name):
         for module in self._modules:
             if module.name == name:
@@ -283,9 +285,9 @@ class Modules:
                 continue
             else:
                 break
-        
+
         return self._parse_module_defn(defn, path, is_sys)
-        
+
 
     def _read_modules(self, pth, is_system):
 
@@ -379,7 +381,7 @@ class Modules:
         await self._reread_installed()
         self._notify_listeners({ 'type': 'modulesChanged' })
 
-    async def install_from_file(self, path):
+    async def install_from_file(self, path, update: bool = False):
 
         with ZipFile(path) as zip:
 
@@ -393,7 +395,9 @@ class Modules:
         meta = self._read_module(module_path)
 
         await self._reread_installed()
-        self._notify_listeners({ 'type': 'moduleInstalled', 'data': { 'name': meta.name }})
+
+        if update:
+            self._notify_listeners({ 'type': 'moduleUpdated', 'data': { 'name': meta.name }})
         self._notify_listeners({ 'type': 'modulesChanged' })
 
     def install(self, path):
@@ -432,6 +436,7 @@ class Modules:
         module.is_sys = is_sys
         module.name = str(defn['name'])
         module.title = str(defn['title'])
+        module.build_time = defn.get('build-time', '')
         if 'description' in defn:
             module.description = str(defn['description'])
         else:
@@ -454,6 +459,11 @@ class Modules:
         version = version[:4]
         version = list(map(int, version))
         module.version = version
+
+        if 'category' in defn:
+            module.category = str(defn['category'])
+        else:
+            module.category = ''
 
         mod_r_v = defn.get('rVersion', None)
         mod_r_v = determine_r_version(mod_r_v)

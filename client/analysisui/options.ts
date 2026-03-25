@@ -2,9 +2,9 @@
 'use strict';
 
 import Opt from './option';
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'eventemitter3';
 
-type QueueType = { 
+type QueueType = {
     option: Opt<any>;
     keys: (string|number)[];
     type: 'change' | 'property' | 'insert' | 'remove';
@@ -12,7 +12,7 @@ type QueueType = {
     length: 1;
 }
 
-type QueueStoreType = { 
+type QueueStoreType = {
     option: Opt<any>;
     events: any[];
     properties: QueueType[];
@@ -203,7 +203,7 @@ export class Options extends EventEmitter {
     _serverQueuedEvents = new keyedQueue();
     _beginEdit = 0;
 
-    constructor(def : OptionDef[], translator: (key: string) => string) {
+    constructor(def : OptionDef[], translator: (key: string, formats?: string | (string | number)[] | { [key: string]: string | number }, options?: { prefix: string, postfix: string }) => string) {
         super();
 
         this._refList = { };
@@ -214,7 +214,7 @@ export class Options extends EventEmitter {
         this.initialize(def, translator);
     }
 
-    initialize(def: OptionDef[], translator: ((key: string) => string)) {
+    initialize(def: OptionDef[], translator: ((key: string, formats?: string | (string | number)[] | { [key: string]: string | number }, options?: { prefix: string, postfix: string }) => string)) {
         for (let i = 0; i < def.length; i++) {
             let item = def[i];
 
@@ -222,7 +222,7 @@ export class Options extends EventEmitter {
                 item.default = null;
 
             this.translateDefault(translator, item);
-            
+
             //type OutputType = InferType<typeof item>;
             //console.log(item.type)
             let option = new Opt<any>(item.default, item);
@@ -231,7 +231,7 @@ export class Options extends EventEmitter {
         }
     }
 
-    translateDefault(translator: ((key: string) => string), item: any, defaultValue?: any): string | null {
+    translateDefault(translator: ((key: string, formats?: string | (string | number)[] | { [key: string]: string | number }, options?: { prefix: string, postfix: string }) => string), item: any, defaultValue?: any): string | null {
         if (defaultValue === undefined) {
             if (item.default) {
                 let translated = this.translateDefault(translator, item, item.default);
@@ -421,7 +421,7 @@ export class Options extends EventEmitter {
         }
     }
 
-    
+
 }
 
 export default Options;

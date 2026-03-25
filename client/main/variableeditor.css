@@ -47,7 +47,7 @@
 .jmv-variable-editor-main {
     position: relative ;
     margin: 0 auto ;
-    width: 700px ;
+    width: 800px ;
     height: 100% ;
     box-sizing: border-box;
     overflow: hidden ;
@@ -413,7 +413,6 @@
 
 .jmv-variable-editor-widget-footer .switch::before {
     content: "";
-    z-index: 2;
     position: absolute;
     top: calc(var(--diameter) / 2 + var(--offset) / 2 + 0.5px);
     inset-inline-start: var(--offset);

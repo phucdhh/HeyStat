@@ -106,15 +106,10 @@ class PageModules extends HTMLElement {
         this.$install = this.$content.querySelectorAll<HTMLButtonElement>('.jmv-store-module-button[data-op="install"], .jmv-store-module-button[data-op="update"]');
         this.$visibility = this.$content.querySelectorAll<HTMLButtonElement>('.jmv-store-module-button[data-op="show"], .jmv-store-module-button[data-op="hide"]');
 
-        this.$search.addEventListener('input', (event) => {
-            if (this.searchingInProgress)
-                clearTimeout(this.searchingInProgress);
+        this.onSearchValueChanged = this.onSearchValueChanged.bind(this);
 
-            this.searchingInProgress = setTimeout(() => {
-                this.markHTML();
-                this.searchingInProgress = null;
-            }, 600);
-        });
+        this.$search.addEventListener('input', this.onSearchValueChanged);
+        this.$search.addEventListener('change', this.onSearchValueChanged);
 
         this.$search.addEventListener('focus', (event) => {
             this.$search.select();
@@ -172,6 +167,20 @@ class PageModules extends HTMLElement {
         this._triggerRefresh();
     }
 
+    onSearchValueChanged() {
+        if (this.searchingInProgress)
+            clearTimeout(this.searchingInProgress);
+
+        this.searchingInProgress = setTimeout(() => {
+            this.markHTML();
+            this.searchingInProgress = null;
+        }, 600);
+    }
+
+    search(term: string) : void {
+        this.$search.value = term;
+    }
+
     _triggerRefresh() {
         this._events.setProgress({ type: 'refresh' });
     }
@@ -201,23 +210,55 @@ class PageModules extends HTMLElement {
     }
 
     markHTML() {
+        let searchType: 'module' | 'plots' | 'general' = 'general';
         let searchValue = this.$search.value.toLowerCase().trim();
+        if (searchValue.startsWith('module::')) {
+            searchType = 'module';
+            searchValue = searchValue.substring(8).trim();
+        }
+        else if (searchValue.startsWith('plot::')) {
+            searchType = 'plots';
+            searchValue = searchValue.substring(6).trim();
+        }
+        
         this.marker.unmark({
             done: () => {
-                if (searchValue != '') {
-                    this.querySelectorAll('.jmv-store-module').forEach(el => { el.classList.add('hide-module') });;
-                    let regex = new RegExp(`\\b${searchValue}`, 'gi');
-                    this.marker.markRegExp(regex, {
-                        each: (element) => {
-                            let parent = element.closest('.jmv-store-module');
-                            if (parent)
-                                parent.classList.remove('hide-module');
-                        },
-                        exclude: ['.jmv-store-module-button']
-                    });
-                }
-                else
-                    this.querySelectorAll('.jmv-store-module').forEach(el => {el.classList.remove('hide-module')});
+                
+                    switch (searchType) {
+                        case 'module':
+                            if (searchValue != '') {
+                                this.querySelectorAll('.jmv-store-module').forEach(el => {el.classList.remove('hide-module')});
+                                this.querySelectorAll<HTMLElement>('.jmv-store-module').forEach(el => { 
+                                    if (el.dataset['name'].toLowerCase().startsWith(searchValue) === false)
+                                        el.classList.add('hide-module') 
+                                });
+                            }
+                            break;
+                        case 'plots':
+                            this.querySelectorAll('.jmv-store-module').forEach(el => {el.classList.add('hide-module')});
+                            this.querySelectorAll<HTMLElement>('.jmv-store-module[data-has-plots="true"]').forEach(el => { 
+                                if (el.dataset['name'].toLowerCase().startsWith(searchValue))
+                                    el.classList.remove('hide-module') 
+                            });
+                            break;
+                        default:
+                            if (searchValue != '') {
+                                this.querySelectorAll('.jmv-store-module').forEach(el => { el.classList.add('hide-module') });
+                                let regex = new RegExp(`\\b${searchValue}`, 'gi');
+                                this.marker.markRegExp(regex, {
+                                    each: (element) => {
+                                        let parent = element.closest('.jmv-store-module');
+                                        if (parent)
+                                            parent.classList.remove('hide-module');
+                                    },
+                                    exclude: ['.jmv-store-module-button']
+                                });
+                            }
+                            else {
+                                this.querySelectorAll('.jmv-store-module').forEach(el => {el.classList.remove('hide-module')});
+                            }
+                            break;
+                    }
             }
         });
     }
@@ -253,8 +294,10 @@ class PageModules extends HTMLElement {
 
             let labelId = _focusLoop.getNextAriaElementId('label');
 
+            const hasPlots = module.category === 'plots';
+
             let html = `
-                <div class="jmv-store-module modules-list-item modules-auto-select" data-name="${ module.name }" tabindex="-1" aria-labelledby="${labelId}" role="listitem">
+                <div class="jmv-store-module modules-list-item modules-auto-select" data-has-plots="${hasPlots}" data-name="${ module.name }" tabindex="-1" aria-labelledby="${labelId}" role="listitem">
                     <div class="jmv-store-module-lhs">
                         <div class="jmv-store-module-icon"></div>
                     </div>
@@ -316,7 +359,7 @@ class PageModules extends HTMLElement {
                 html += `
                     <button
                         ${ disabled ? 'disabled' : '' }
-                        data-path="${ module.path }",
+                        data-path="${ (op === 'update' && module.url) ? module.url : module.path }"
                         data-name="${ module.name }"
                         data-op="${ op }"
                         class="jmv-store-module-button"

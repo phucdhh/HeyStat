@@ -31,6 +31,7 @@ export class LayoutGrid extends HTMLElement {
         stretchEndCells = true;
         _rowCount: number = -1;
         _columnCount: number = -1;
+        stretchLastRow = false;
 
         private _layoutStretch: boolean = false;
         private _currentId = 0;
@@ -198,7 +199,10 @@ export class LayoutGrid extends HTMLElement {
             if (this.updateCustomGridProperties() === false)
                 return;
 
-            this.style.gridTemplateRows = 'repeat(' + (this._rowCount)  + ', max-content)';
+            if (this.stretchLastRow)
+                this.style.gridTemplateRows = 'repeat(' + (this._rowCount-1)  + ', max-content) 1fr';
+            else
+                this.style.gridTemplateRows = 'repeat(' + (this._rowCount)  + ', max-content)';
 
             let repeat = 0;
             let str = '';
@@ -221,7 +225,7 @@ export class LayoutGrid extends HTMLElement {
                     lastValue = value;
 
                 if (value !== lastValue) {
-                    str += 'repeat(' + repeat + ', ' + (typeof lastValue !== 'string' ? 'minmax(0px, ' + (lastValue * this._factorMultiplier) + 'fr)' : lastValue) + ')';
+                    str += 'repeat(' + repeat + ', ' + (typeof lastValue !== 'string' ? 'minmax(max-content, ' + (lastValue * this._factorMultiplier) + 'fr)' : lastValue) + ')';
                     repeat = 0;
                     lastValue = value;
                 }
@@ -229,7 +233,7 @@ export class LayoutGrid extends HTMLElement {
                 repeat += 1;
             }
 
-            str += 'repeat(' + repeat + ', ' + (typeof lastValue !== 'string' ? 'minmax(0px, ' + (lastValue * this._factorMultiplier) + 'fr)' : lastValue) + ')';
+            str += 'repeat(' + repeat + ', ' + (typeof lastValue !== 'string' ? 'minmax(max-content, ' + (lastValue * this._factorMultiplier) + 'fr)' : lastValue) + ')';
 
             this.style.gridTemplateColumns = str;
         }

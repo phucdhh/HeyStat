@@ -144,7 +144,7 @@ class Instance:
             temp_path = self.temp_path()
             os.makedirs(temp_path, exist_ok=True)
             nor_path = mktemp(suffix=ext, dir=temp_path)
-        if path.startswith('{{SessionTemp}}'):
+        elif path.startswith('{{SessionTemp}}'):
             nor_path = path.replace('{{SessionTemp}}', self._session.session_temp, 1)
         elif path.startswith('{{Documents}}'):
             nor_path = path.replace('{{Documents}}', Dirs.documents_dir())
@@ -218,7 +218,7 @@ class Instance:
         return path
 
     def _module_event(self, event):
-        if event['type'] == 'moduleInstalled':
+        if event['type'] == 'moduleUpdated':
             module_name = event['data']['name']
 
             broadcast = jcoms.ModuleRR()
@@ -3009,6 +3009,8 @@ class Instance:
                 level_pb.label = level[1]
                 level_pb.importValue = level[2]
                 level_pb.pinned = level[3]
+                level_pb.filtered = level[4]
+                level_pb.treatAsMissing = level[5]
 
         if column.cell_tracker.is_edited:
             for range in column.cell_tracker.edited_cell_ranges:
@@ -3166,7 +3168,9 @@ class Instance:
         module_pb.name = module.name
         module_pb.title = module.title
         module_pb.version = version
+        module_pb.buildTime = module.build_time
         module_pb.description = module.description
+        module_pb.category = module.category
         module_pb.authors.extend(module.authors)
         module_pb.path = module.path
         module_pb.isSystem = module.is_sys

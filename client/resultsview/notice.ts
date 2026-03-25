@@ -2,7 +2,7 @@
 
 import Elem, { ElementData, ElementModel } from './element';
 
-import I18ns from '../common/i18n';
+import I18ns, { stringToParagraphs } from '../common/i18n';
 import { HTMLElementCreator as HTML }  from '../common/htmlelementcreator';
 import { AnalysisStatus } from './create';
 
@@ -10,7 +10,7 @@ export enum NoticeType {
     WARNING1 = 1,
     WARNING2 = 2,
     INFO = 3,
-    ERROR = 4
+    ERROR = 0
 }
 
 export interface INoticeElementData {
@@ -73,7 +73,7 @@ export class NoticeView extends Elem.View<Model> {
             case 3:
                 $icon.classList.add('info');
                 break;
-            case 4:
+            case 0:
                 $icon.classList.add('error');
                 break;
         }
@@ -82,10 +82,12 @@ export class NoticeView extends Elem.View<Model> {
         this.querySelectorAll('a[href]').forEach(el => el.removeEventListener('click', this._handleLinkClick));
 
         const content = I18ns.get('app').__(doc.content, { prefix: '<strong>', postfix: '</strong>' });
-        $content.innerHTML = content;
+
+        $content.innerHTML = stringToParagraphs(content);
 
         this.querySelectorAll('a[href]').forEach(el => el.addEventListener('click', this._handleLinkClick));
     }
+
 
     _handleLinkClick(event: Event) {
         if (event.target instanceof HTMLElement) {

@@ -7,36 +7,14 @@ services:
     profiles:
       - donotstart
 
-  # vite:
-  #   image: jonathonlove/vite:latest
-  #   container_name: vite
-  #   privileged: true
-  #   command: [ 'mkdir -p /source/merged && unionfs-fuse -o cow /source/server:/source/client=RW /source/merged && cd /source/merged && echo installing npm deps && npm install && echo starting vite server && vite --host' ]
-  #   volumes:
-  #     - './client/main:/source/client/main'
-  #     - './client/resultsview:/source/client/resultsview'
-  #     - './client/analysisui:/source/client/analysisui'
-  #     - './client/lib:/source/client/lib'
-  #     - './client/assets:/source/client/assets'
-  #     - './client/common:/source/client/common'
-  #     - './client/index.html:/source/client/index.html'
-  #     - './client/resultsview.html:/source/client/resultsview.html'
-  #     - './client/analysisui.html:/source/client/analysisui.html'
-  #     - './client/tsconfig.json:/source/client/tsconfig.json'
-  #     - './client/vite.config.mts:/source/client/vite.config.mts'
-  #     - './client/package.json:/source/client/package.json'
-  #     - './server/jamovi/server/jamovi.proto:/source/server/assets/coms.proto'
-  #   ports:
-  #     - '5173:5173'
-  #     - '24678:24678'
 
-  heystat:
+  heystat: &base
     image: heystat/heystat:2.7.6
     container_name: heystat
+    profiles: [main]
     build:
       context: .
       dockerfile: docker/jamovi-Dockerfile
-    platform: linux/amd64
     ports:
       - '42337:80'
     command: ["/usr/bin/python3 -u -m jamovi.server 42337 --if=*"]
@@ -46,11 +24,7 @@ services:
     # implementations: `cannot unmarshal number 0.1 into Go struct field CreateRequest.StopTimeout of type int`.
     # Use 1s (one second) or an integer number of seconds instead.
     stop_grace_period: 1s
-    environment:
-
-        # for development, use the vite dev server
-        # (uncomment/enable the vite service above too)
-        # JAMOVI_DEV_SERVER: "http://vite:5173"
+    environment: &base_env
 
         # block Rj - don't enable unless you understand the risks!
         JAMOVI_ALLOW_ARBITRARY_CODE: 'false'
@@ -89,7 +63,46 @@ services:
     volumes:
       - ./Documents:/root/Documents
       - ./jamovi-modules:/root/.jamovi/modules
-      # Mount fixed public_roots.py
+      # Mount fixed public_roots.py (HeyStat reverse-proxy support)
       - ./server/jamovi/server/public_roots.py:/usr/lib/jamovi/server/jamovi/server/public_roots.py:ro
       # Mount built client files to override container's default client
       - ./client/dist:/usr/lib/jamovi/client:ro
+
+  heystat-dev:
+    <<: *base
+    container_name: heystat-dev
+    profiles: [dev]
+    environment:
+      <<: *base_env
+      JAMOVI_DEV_SERVER: "http://vite:5173"
+
+  test:
+    <<: *base
+    container_name: heystat-tests
+    profiles: [tests]
+    command: ["/usr/bin/python3 -u -m pytest /usr/lib/jamovi/server/jamovi/tests"]
+
+  vite:
+    image: jonathonlove/vite:latest
+    container_name: vite
+    profiles: [dev]
+    privileged: true
+    command: [ 'mkdir -p /source/merged && unionfs-fuse -o cow /source/server:/source/client=RW /source/merged && cd /source/merged && echo installing npm deps && npm install && echo starting vite server && vite --host' ]
+    volumes:
+      - './client/main:/source/client/main'
+      - './client/resultsview:/source/client/resultsview'
+      - './client/analysisui:/source/client/analysisui'
+      - './client/lib:/source/client/lib'
+      - './client/assets:/source/client/assets'
+      - './client/common:/source/client/common'
+      - './client/index.html:/source/client/index.html'
+      - './client/resultsview.html:/source/client/resultsview.html'
+      - './client/analysisui.html:/source/client/analysisui.html'
+      - './client/tsconfig.json:/source/client/tsconfig.json'
+      - './client/vite.config.mts:/source/client/vite.config.mts'
+      - './client/package.json:/source/client/package.json'
+      - './server/jamovi/server/jamovi.proto:/source/server/assets/coms.proto'
+    ports:
+      - '5173:5173'
+      - '24678:24678'
+

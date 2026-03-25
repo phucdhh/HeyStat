@@ -44,30 +44,24 @@ No installation required - works in any modern browser (Chrome, Firefox, Safari,
 # Clone repository
 git clone [your-repo-url]
 cd HeyStat
+git submodule update --init --recursive
 
 # Build and run
-docker-compose build
-docker-compose up
+docker compose --profile main build
+docker compose --profile main up
 ```
 
 Access at: http://127.0.0.1:42337
 
+## dev mode
 
-# Development
+jamovi can be run with a vite dev server serving the client files as follows:
 
-## Pre-requisites
+```bash
+docker compose --profile dev up
+```
 
-- [Python](https://www.python.org/) (3.8 or higher)
-- [pip](https://pypi.org/project/pip/)
-- [Poetry](https://python-poetry.org/)
-- [Docker](https://www.docker.com/)
-- [Docker Compose](https://docs.docker.com/compose/)
-
-## Setup
-
-### Virtual Environment
-
-Create a virtual environment using the following command:
+For dev mode with hot-reload:
 
 ```bash
 poetry install

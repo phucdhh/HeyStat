@@ -17,6 +17,7 @@ import type { IModulesProvider } from './instance';
 class ModuleError extends Error {}
 class ModuleNotFoundError extends ModuleError {}
 class ModuleCorruptError extends ModuleError {}
+class ModuleIncompatibleError extends ModuleError {}
 class AnalysisNotFoundError extends ModuleError {}
 
 interface IModulesModel {
@@ -33,12 +34,13 @@ interface IAnalysisPosition {
     menuSubgroup: string,
     menuTitle: string,
     menuSubtitle: string,
-    category: string
+    category: 'plots' | 'analyses'
 }
 
 interface IAnalysisMeta extends IAnalysisPosition {
     name : string,
     ns: string,
+    category: 'plots' | 'analyses'
 }
 
 type AnalysisCategory = 'analyses' | 'plots';
@@ -60,14 +62,17 @@ type Op =
   | 'hide'
   | 'remove';
 
-interface IModuleMeta {
+export interface IModuleMeta {
     name: string,
     title: string,
     version: number,
+    buildTime: string,
     authors: string[],
     description: string,
+    category: 'plots' | 'analyses',
     analyses: IAnalysisMeta[],
     path: string,
+    url: string,
     isSystem: boolean,
     new: boolean,
     minAppVersion: number,
@@ -81,6 +86,7 @@ export class ModulesBase extends EventMap<IModulesModel> {
 
     _parent: ModulesBase;
     _instance: IModulesProvider;
+    _initialised = false;
 
     constructor(args: {instance: any, parent?: ModulesBase}) {
         super({
@@ -158,20 +164,75 @@ export class ModulesBase extends EventMap<IModulesModel> {
         });
     }
 
+    compareModuleMetas(m1: IModuleMeta, m2: IModuleMeta) {
+        let ff =  m1.name === m2.name &&
+                m1.title === m2.title &&
+                m1.version === m2.version &&
+                m1.buildTime === m2.buildTime &&
+                m1.description === m2.description &&
+                m1.category === m2.category &&
+                m1.visible === m2.visible && 
+                m1.minAppVersion === m2.minAppVersion &&
+                m1.path === m2.path &&
+                m1.isSystem === m2.isSystem &&
+                m1.new === m2.new &&
+                m1.incompatible === m2.incompatible &&
+                m1.analyses.length === m2.analyses.length &&
+                m1.authors.length === m2.authors.length;
+
+        if (ff) {
+
+            for (let i = 0; i < m1.analyses.length; i++) {
+                const a1 = m1.analyses[i];
+                const a2 = m2.analyses[i];
+
+                ff =  ff && a1.name === a2.name &&
+                            a1.category === a2.category &&
+                            a1.menuGroup === a2.menuGroup &&
+                            a1.menuSubgroup === a2.menuSubgroup &&
+                            a1.menuSubtitle === a2.menuSubtitle &&
+                            a1.menuTitle === a2.menuTitle &&
+                            a1.title === a2.title;
+            }
+        }
+
+        if (ff) {
+            for (let a1 of m1.authors)
+                ff =  ff && m2.authors.includes(a1);
+        }
+
+        return ff;
+    }
+
     _setup(message, modulesPB) {
+        let current = this.attributes.modules;
+
+        let installedModules: IModuleMeta[] = [];
+        let updatedModules: IModuleMeta[] = [];
+        let changedModules: IModuleMeta[] = [];
 
         let modules: IModuleMeta[] = [ ];
 
         for (let modulePB of modulesPB) {
 
+            let currentModule = current.find((value, index, obj) => {
+                if (value.name === modulePB.name)
+                    return true;
+
+                return false;
+            });
+
             let module: IModuleMeta = {
                 name:  modulePB.name,
                 title: modulePB.title,
                 version: modulePB.version,
+                buildTime: modulePB.buildTime,
                 authors: modulePB.authors,
                 description: modulePB.description,
+                category: modulePB.category ? modulePB.category : 'analysis',
                 analyses: modulePB.analyses,
                 path: modulePB.path,
+                url: '',
                 isSystem: modulePB.isSystem,
                 new: modulePB.new,
                 minAppVersion: modulePB.minAppVersion,
@@ -183,7 +244,28 @@ export class ModulesBase extends EventMap<IModulesModel> {
 
             module.ops = this._determineOps(module);
 
-            if (this.create)
+            let alreadyExists = false;
+            if ( ! currentModule)
+                installedModules.push(module)
+            else {
+                if (currentModule.version !== module.version)
+                    updatedModules.push(module);
+                else if (this.compareModuleMetas(currentModule, module) === false)
+                    changedModules.push(module);
+                else
+                    alreadyExists = true;
+
+                current = current.filter((value) => {
+                    if (value.name === modulePB.name)
+                        return false;
+
+                    return true;
+                });
+            }
+
+            /*if (alreadyExists)
+                module = currentModule;
+            else */if (alreadyExists === false && this.create) 
                 this.create(module);
 
             modules.push(module);
@@ -191,6 +273,24 @@ export class ModulesBase extends EventMap<IModulesModel> {
 
         this.set('message', message);
         this.set('modules', modules);
+
+        if (this._initialised) {
+            for (let installed of installedModules) {
+                this.trigger('moduleInstalled', installed);
+            }
+            for (let uninstalled of current) {
+                this.trigger('moduleUninstalled', uninstalled);
+            }
+            for (let updated of updatedModules) {
+                this.trigger('moduleUpdated', updated);
+            }
+            for (let changed of changedModules) {
+                this.trigger('moduleChanged', changed);
+            }
+        }
+        if (updatedModules.length > 0 || current.length > 0 || installedModules.length > 0 || changedModules.length > 0)
+            this.trigger('modulesChanged');
+        this._initialised = true;
     }
 
     _determineOps(module: IModuleMeta) : Op[] {
@@ -214,11 +314,14 @@ class Module {
     _ready: Promise<void>;
     currentI18nCode: string;
     currentI18nDef: I18nData;
+    incompatible: boolean;
 
-    constructor(ns, version) {
+    constructor(ns: string, version: string, incompatible: boolean) {
         this._ns = ns;
         this._version = version;
+        this.incompatible = incompatible;
         this._i18nReady = this._loadI18n();
+        
     }
 
     load() {
@@ -230,6 +333,11 @@ class Module {
     }
 
     async _load(refresh) {
+        if (this.incompatible) {
+            this._status = 'incompatible';
+            return;
+        }
+
         this.loaded = true;
         let version = await host.version;
         let url = `../modules/${ this._ns }`;
@@ -288,7 +396,7 @@ class Module {
             }
         }
         else {
-            this._status = 'legacy';
+            this._status = 'missing';
         }
     }
 
@@ -315,7 +423,10 @@ class Module {
         if (this.loaded === false)
             this.load();
         await this._ready;
-        if (this._status == 'corrupt') {
+        if (this._status === 'incompatible') {
+            throw new ModuleIncompatibleError();
+        }
+        else if (this._status == 'corrupt') {
             throw new ModuleCorruptError();
         }
         else if (this._status == 'missing') {
@@ -468,11 +579,38 @@ export class Modules extends ModulesBase {
     _available: Available;
     _moduleDefns: { [name: string]: Module } = { };
     _preloadedJMV = false;
+    _updatingUrl = false;
     
     constructor(args: {instance: any, parent?: any}) {
         super(args);
 
         this._available = new Available({ instance: args.instance, parent: this });
+        this._available.on('change:status', () => 
+        {
+            if (this._available.get('status') === 'done') {
+                if (this._updatingUrl) {
+                    this._updatingUrl = false
+                    return;
+                }
+
+                this._updatingUrl = true;
+
+                let modules = this.attributes.modules;
+                for (let module of modules) {
+                    let avMods = this._available.attributes.modules;
+                    for (let avMod of avMods) {
+                        if (avMod.name === module.name) {
+                            module.url = avMod.path;
+                            module.ops = this._determineOps(module, avMod);
+                            break;
+                        }
+                    }
+                    
+                }
+                this.attributes.modules = [ ];
+                this.set('modules', modules);
+            }
+        });
 
         this._instance.settings().on('change:modules', async (modules) => {
             this._setup('', modules.changed.modules);
@@ -483,16 +621,11 @@ export class Modules extends ModulesBase {
                 this._preloadedJMV = true;
             }
         });
-
-        this._instance.on('moduleInstalled', (module) => {
-            this.trigger('moduleInstalled', module);
-        });
     }
 
     override create(info: IModuleMeta) {
+        this._moduleDefns[info.name] = new Module(info.name, Version.stringify(info.version), info.incompatible);
         info.getTranslator = this.getTranslator(info.name);
-
-        this._moduleDefns[info.name] = new Module(info.name, Version.stringify(info.version));
     }
 
     available() {
@@ -507,14 +640,16 @@ export class Modules extends ModulesBase {
 
     _createModule(ns) {
         let version = '';
+        let incompatible = false;
         for (let mod of this.attributes.modules) {
             if (mod.name === ns) {
                 version = Version.stringify(mod.version);
+                incompatible = mod.incompatible;
                 break;
             }
         }
 
-        let module = new Module(ns, version);
+        let module = new Module(ns, version, incompatible);
         this._moduleDefns[ns] = module;
 
         return module;
@@ -561,7 +696,7 @@ export class Modules extends ModulesBase {
         return await module.getI18nDefn();
     }
 
-    override _determineOps(module: IModuleMeta): Op[] {
+    override _determineOps(module: IModuleMeta, availableMod?: IModuleMeta): Op[] {
 
         let showHide: Op[] = [ 'show' ];
         if (module.incompatible)
@@ -574,16 +709,14 @@ export class Modules extends ModulesBase {
             remove = [ ];
 
         let incompatible: Op[] = [ ];
-        if (module.incompatible)
-            incompatible = ['incompatible' ];
+        if (module.incompatible) {
+            if (module.url !== '')
+                incompatible.push('update');
+            incompatible.push('incompatible');
+        }
+        else if (availableMod && availableMod.version > module.version && module.url !== '')
+            incompatible.push('update');
 
         return [].concat(showHide, remove, incompatible);
     }
 }
-
-/*Modules.ModuleError = ModuleError;
-Modules.ModuleNotFoundError = ModuleNotFoundError;
-Modules.ModuleCorruptError = ModuleCorruptError;
-Modules.AnalysisNotFoundError = AnalysisNotFoundError;*/
-
-//export default Modules;

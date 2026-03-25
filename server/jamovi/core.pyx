@@ -27,6 +27,8 @@ cdef extern from "column.h":
         const char *svalue() const;
         const char *label() const;
         bool pinned() const;
+        bool treatAsMissing() const;
+        bool filtered() const;
     ctypedef union Value:
         char *s
         float d
@@ -102,6 +104,32 @@ cdef class DataSet:
         ds = DataSet()
         ds._this = CDataSet.retrieve(memoryMap._this)
         return ds
+
+    def attach(self, read_only=False):
+        pass
+
+    def detach(self):
+        pass
+
+    def set_values(self, columns, row_offset, values):
+        if (isinstance(columns, int) or
+                isinstance(columns, str)):
+            columns = [columns]
+
+        for index, index_or_name in enumerate(columns):
+            column_values = values[index]
+            self[index_or_name].set_values(row_offset, column_values)
+
+    def get_values(self, columns, row_offset, n_rows):
+        if (isinstance(columns, int) or
+                isinstance(columns, str)):
+            columns = [columns]
+
+        values = [None] * len(columns)
+        for index, index_or_name in enumerate(columns):
+            values[index] = self[index_or_name].get_values(row_offset, n_rows)
+
+        return values
 
     def __getitem__(self, index_or_name):
         cdef int index
@@ -462,7 +490,9 @@ cdef class Column:
                         count,
                         level.label().decode('utf-8'),
                         level.svalue().decode('utf-8'),
-                        level.pinned()))
+                        level.pinned(),
+                        level.filtered(),
+                        level.treatAsMissing()))
                     count += 1
             else:
                 for level in levels:
@@ -470,7 +500,9 @@ cdef class Column:
                         level.ivalue(),
                         level.label().decode('utf-8'),
                         level.svalue().decode('utf-8'),
-                        level.pinned()))
+                        level.pinned(),
+                        level.filtered(),
+                        level.treatAsMissing()))
         return arr
 
     @property
@@ -548,6 +580,16 @@ cdef class Column:
                 self._this.setIValue(index, level_i, initing)
         else:
             self._this.setIValue(index, value, initing)
+
+    def set_values(self, index, values, initing=False):
+        for i, value in enumerate(values):
+            self.set_value(index + i, value, initing=initing)
+
+    def get_values(self, index, n):
+        values = [None] * n
+        for i in range(n):
+            values[i] = self.get_value(index + i)
+        return values
 
     def get_value(self, index):
         cdef int raw

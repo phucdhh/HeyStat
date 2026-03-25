@@ -43,6 +43,7 @@ import type { InfoBox } from './infobox';
 
 import keyboardJS  from 'keyboardjs';
 import HighContrast from '../common/highcontrast';
+import Store from './store';
 
 window._ = I18ns.get('app')._;
 window.n_ = I18ns.get('app')._n;
@@ -83,19 +84,21 @@ try {
 
     //current = 'he';
 
-    response = await fetch(`${ baseUrl }${ current }.json`);
-    if ( ! response.ok)
-        throw new Error(`Unable to fetch json for language '${ current }'`);
+    if (current !== 'en') {
+        response = await fetch(`${ baseUrl }${ current }.json`);
+        if ( ! response.ok)
+            throw new Error(`Unable to fetch json for language '${ current }'`);
 
-    try {
-        let def = await response.json();
-        i18n.initialise(current, def);
-        document.documentElement.setAttribute('lang', current);
-        document.body.dir = i18n.isRTL() ? 'rtl' : 'ltr';
-        host.setLanguage(current);
-    }
-    catch (e) {
-        throw new Error(`Unable to load json for language '${ current }'`);
+        try {
+            let def = await response.json();
+            i18n.initialise(current, def);
+            document.documentElement.setAttribute('lang', current);
+            document.body.dir = i18n.isRTL() ? 'rtl' : 'ltr';
+            host.setLanguage(current);
+        }
+        catch (e) {
+            throw new Error(`Unable to load json for language '${ current }'`);
+        }
     }
 }
 catch (e) {
@@ -148,11 +151,15 @@ keyboardJS.Keyboard.prototype.resume = function(key) {
 
 const instance = new Instance(coms);
 
+const store = new Store(instance.settings(), instance.modules());
+store.classList.add('jmv-store');
+document.body.append(store);
+
 let dataSetModel = instance.dataSetModel();
 let analyses = instance.analyses();
 
 let backstageModel = new BackstageModel(instance);
-let ribbonModel = new RibbonModel(instance.modules(), instance.settings());
+let ribbonModel = new RibbonModel(instance.modules(), instance.settings(), store);
 
 // this is passing over a context boundary, so can't pass complex objects
 host.setDialogProvider({ showDialog: (op:string, options: IShowDialogOptions) => backstageModel.showDialog(op, options) });
@@ -595,6 +602,11 @@ ready(async() => {
         optionspanel.reloadAnalyses(event.name);
     });
 
+
+    instance.on('moduleUninstalled', (event) => {
+        optionspanel.reloadAnalyses(event.name);
+    });
+
     instance.on('resultsAction', (event: CustomEvent) => {
         const data = event.detail;
         if (data.action === 'open') {
@@ -851,7 +863,7 @@ ready(async() => {
         }
     });
 
-    let optionspanel = new OptionsPanel({ el : document.querySelector('#main-options'), iframeUrl : host.analysisUIUrl, model : instance });
+    let optionspanel = new OptionsPanel(document.querySelector('#main-options'), instance, host.analysisUIUrl, store);
     optionspanel.setDataSetModel(dataSetModel);
     optionspanel.el.addEventListener('splitpanel-hide', () =>  window.focus() );
 
@@ -865,6 +877,7 @@ ready(async() => {
     ribbon.addEventListener('notification', (event: CustomEvent) => notifications.notify(event.detail));
     editor.addEventListener('notification', (event: CustomEvent) => notifications.notify(event.detail));
     backstageModel.on('notification', note => notifications.notify(note));
+    store.addEventListener('notification', (event: CustomEvent) => notifications.notify(event.detail));
 
     dataSetModel.on('change:edited', event => {
         host.setEdited(dataSetModel.attributes.edited);

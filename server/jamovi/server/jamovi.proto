@@ -412,6 +412,8 @@ message ModuleMeta {
     uint32 minAppVersion = 13;
     bool visible = 14;
     bool incompatible = 15;
+    string category = 16;
+    string buildTime = 17;
 }
 
 enum ValueType {
@@ -466,6 +468,8 @@ message VariableLevel {
     int32 value = 2;
     string importValue = 3;
     bool pinned = 4;
+    bool filtered = 5;
+    bool treatAsMissing = 6;
 }
 
 message ColumnCellRange {

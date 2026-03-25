@@ -118,6 +118,7 @@ export type OptionListControlProperties<U> = GridOptionControlProperties<(U | U[
     stripedRows: boolean;
     addButton: string;
     ghostText: string;
+    infoText: string;
     isTarget: boolean;
     valueFilter: ValueFilter;
     enable: boolean;
@@ -159,6 +160,8 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
     $ghostTextLabel: HTMLElement;
     addButton: HTMLElement;
     $addButton: any;
+    infoTextLabel: HTMLElement;
+    infoTextBox: HTMLElement;
     _localData: U[] = [];
     controls = [];
     _listFilter = new TargetListValueFilter();
@@ -209,6 +212,7 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
         this.registerSimpleProperty("stripedRows", false);
         this.registerSimpleProperty("addButton", null);
         this.registerSimpleProperty("ghostText", null);
+        this.registerSimpleProperty("infoText", null);
         this.registerSimpleProperty("isTarget", false);
         this.registerSimpleProperty("valueFilter", ValueFilter.None, new EnumPropertyFilter(ValueFilter, ValueFilter.None));
         this.registerSimpleProperty("enable", true);
@@ -234,7 +238,17 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
         else if (name === 'enable') {
             //let enabled = this.getPropertyValue('enable');
             //this.setEnabledState(enabled);
-
+        }
+        else if (name === 'infoText' && this.infoTextLabel) {
+            let infoText = this.getPropertyValue("infoText");
+            if (infoText !== null) {
+                this.infoTextBox.style.display = '';
+                this.infoTextLabel.innerText = infoText;
+            }
+            else {
+                this.infoTextBox.style.display = 'none';
+                this.infoTextLabel.innerText = '';
+            }
         }
     }
 
@@ -323,6 +337,7 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
                 let row = 0;
                 if (this.showHeaders) {
                     let hCell = this.el.addCell(i, row,  HTML.parse('<div style="white-space: nowrap;" class="silky-option-list-header" data-index="' + columnInfo.index + '">' + this.translate(columnInfo.label) + '</div>'));
+                    hCell.isSelectable(false);
                     hCell.setStretchFactor(columnInfo.stretchFactor);
                     hCell.makeSticky();
                     hCell.setHorizontalAlign(columnInfo.headerAlign === undefined ? 'left' : columnInfo.headerAlign);
@@ -331,6 +346,7 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
                     hCell.setDimensionMinMax(columnInfo.minWidth, columnInfo.maxWidth, columnInfo.minHeight, columnInfo.maxHeight);
                     row += 1;
                 }
+                
                 let $filler = HTML.parse('<div style="white-space: nowrap;" class="list-item-ctrl"></div>');
                 let fillerInUse = false;
                 let fillerZindex = '111';
@@ -352,8 +368,25 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
                         $filler.append(this.addButton);
                         fillerInUse = true;
                     }
+
+                    let infoText = this.getPropertyValue("infoText");
+                    
+                    this.infoTextBox = HTML.parse('<div class="list-info-box"><div class="info-icon"></div></div>');
+                    if (infoText === null) {
+                        infoText = '';
+                        this.infoTextBox.style.display = 'none';
+                    }
+                    this.infoTextLabel = HTML.parse('<div class="list-info-label">' + infoText + '</div>');
+                    this.infoTextBox.append(this.infoTextLabel);
+                    $filler.append(this.infoTextBox);
+                    fillerInUse = true;
+                    fillerZindex = '10';
+                    
                 }
+
+                this.el.stretchLastRow = true;
                 this.fillerCell = this.el.addCell(i, row, $filler);
+                this.fillerCell.isSelectable(false);
                 this.fillerCell.classList.add('silky-option-list-filler');
                 this.fillerCell.makeSticky({ bottom: '0px', 'zIndex': fillerZindex });
                 if (fillerInUse)
@@ -1124,6 +1157,10 @@ export class OptionListControl<P extends OptionListControlProperties<U>, TGrid e
         let ghostText = this.getPropertyValue("ghostText");
         if (ghostText !== null && this.$ghostTextLabel)
             this.$ghostTextLabel.innerText = this.translate(ghostText);
+
+        let infoText = this.getPropertyValue("infoText");
+        if (infoText !== null && this.infoTextLabel)
+            this.infoTextLabel.innerText = this.translate(infoText);
 
 
         let addButtonText = this.getPropertyValue("addButton");
