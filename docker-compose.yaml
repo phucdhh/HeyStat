@@ -65,8 +65,9 @@ services:
       - ./jamovi-modules:/root/.jamovi/modules
       # Mount fixed public_roots.py (HeyStat reverse-proxy support)
       - ./server/jamovi/server/public_roots.py:/usr/lib/jamovi/server/jamovi/server/public_roots.py:ro
-      # Mount built client files to override container's default client
-      - ./client/dist:/usr/lib/jamovi/client:ro
+      # NOTE: ./client/dist is intentionally NOT mounted here.
+      # The built image already contains the compiled client. Only mount
+      # client/dist if you run `npm run build` locally and want to override.
 
   heystat-dev:
     <<: *base
