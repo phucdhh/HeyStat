@@ -101,6 +101,7 @@ class Instance:
         self._mm = None
         self._data = InstanceModel(self)
         self._coms = None
+        self._observer_coms = []  # HeyStat classroom: read-only observer connections
         self._perms = Permissions.retrieve()
         self._mod_tracker = ModTracker(self._data)
 
@@ -225,20 +226,56 @@ class Instance:
             broadcast.command = jcoms.ModuleRR.ModuleCommand.Value('INSTALL')
             broadcast.name = module_name
 
-            if self._coms is not None:
-                self._coms.send(broadcast, self._instance_id)
+            self._broadcast(broadcast, self._instance_id)
 
     @property
     def instance_path(self):
         return self._instance_path
 
-    def set_coms(self, coms):
+    def set_coms(self, coms, role='writer'):
+        """Attach a communication channel.
+
+        role='writer'  – full interactive session (default, preserves original behaviour).
+        role='observer' – read-only; receives result broadcasts but cannot send requests.
+
+        NOTE (HeyStat classroom): This is an intentional upstream divergence to support
+        teacher-observe and group-collaborate modes.  Do not remove without updating
+        classroom/api/routers/sessions.py accordingly.
+        """
+        if role == 'observer':
+            coms.add_close_listener(lambda clean=True, c=coms: self._remove_observer(c))
+            self._observer_coms.append(coms)
+            return
+        # writer path (original behaviour)
         if self._coms is not None:
             self._coms.remove_close_listener(self._close)
         self._coms = coms
         self._coms.add_close_listener(self._close)
         self._no_connection_since = None
         self._virgin = False
+
+    def _remove_observer(self, coms):
+        """Remove a disconnected observer."""
+        try:
+            self._observer_coms.remove(coms)
+        except ValueError:
+            pass
+
+    def _broadcast(self, message, instance_id=None, **kwargs):
+        """Send *message* to the writer and every active observer."""
+        if self._coms is not None:
+            if instance_id is not None:
+                self._coms.send(message, instance_id, **kwargs)
+            else:
+                self._coms.send(message, **kwargs)
+        for obs in list(self._observer_coms):
+            try:
+                if instance_id is not None:
+                    obs.send(message, instance_id, **kwargs)
+                else:
+                    obs.send(message, **kwargs)
+            except Exception:
+                pass
 
     def close(self):
         self._session.modules.remove_listener(self._module_event)
@@ -271,8 +308,7 @@ class Instance:
         return self._idle_since
 
     def notify(self, notification):
-        if self._coms is not None:
-            self._coms.send(notification.as_pb())
+        self._broadcast(notification.as_pb())
 
     @property
     def analyses(self):
@@ -306,8 +342,7 @@ class Instance:
             log.info(request.payloadType)
 
     def _on_results(self, analysis):
-        if self._coms is not None:
-            self._coms.send(analysis.results, self._instance_id, complete=analysis.complete)
+        self._broadcast(analysis.results, self._instance_id, complete=analysis.complete)
 
     def _on_output_received(self, analysis, outputs):
 

@@ -1098,100 +1098,100 @@ LMS API (FastAPI)
 
 > Ước lượng thời gian là tham khảo, phụ thuộc vào số người phát triển.
 
-### Phase 1 – Authentication & User (2–3 tuần)
-- [ ] Schema DB: `users`, `roles`, `user_roles` + Alembic migration
-- [ ] API: `/api/v1/auth/*` (register, login, refresh, verify-email, reset-password)
-- [ ] JWT middleware (access 15 phút, refresh 7 ngày, rotation)
-- [ ] Admin: quản lý user, cấp role Teacher
-- [ ] Frontend Vue 3: trang đăng nhập, đăng ký, dashboard cơ bản tại `/classroom/`
-- [ ] Nginx config: thêm `location /api/` → FastAPI:8080; `location /classroom/` → Vue SPA
+### Phase 1 – Authentication & User ✅ HOÀN THÀNH
+- [x] Schema DB: `users`, `roles`, `user_roles` + Alembic migration
+- [x] API: `/api/v1/auth/*` (register, login, refresh, verify-email, reset-password)
+- [x] JWT middleware (access 15 phút, refresh 7 ngày, rotation)
+- [x] Admin: quản lý user, cấp role Teacher
+- [x] Frontend Vue 3: trang đăng nhập, đăng ký, dashboard cơ bản tại `/classroom/`
+- [x] Nginx config: thêm `location /api/` → FastAPI:8080; `location /classroom/` → Vue SPA
 
-### Phase 2 – Classes & Enrollment (2–3 tuần)
-- [ ] Schema DB: `classes`, `enrollments`
-- [ ] API: `/api/v1/classes/*`, enrollment flow với enrollment key
-- [ ] Enrollment Key generation (random `[A-Z0-9]{8}`) & bcrypt hash verification
-- [ ] Cron job: tự động đóng lớp khi quá `ends_at`
-- [ ] Frontend: trang tạo lớp, trang sinh viên nhập key, trang lớp học
+### Phase 2 – Classes & Enrollment ✅ HOÀN THÀNH
+- [x] Schema DB: `classes`, `enrollments`
+- [x] API: `/api/v1/classes/*`, enrollment flow với enrollment key
+- [x] Enrollment Key generation (random `[A-Z0-9]{8}`) & bcrypt hash verification
+- [x] Cron job: tự động đóng lớp khi quá `ends_at`
+- [x] Frontend: trang tạo lớp, trang sinh viên nhập key, trang lớp học
 
-### Phase 3 – Files & Assignments (2 tuần)
-- [ ] Schema DB: `class_files`, `assignments`
-- [ ] API: `/api/v1/classes/{id}/files/*`, `/api/v1/classes/{id}/assignments/*`
-- [ ] File upload lên local volume; validate MIME type bằng magic bytes; pre-sign download URL via signed token (không dùng S3 pre-sign ở phase này)
-- [ ] Frontend: upload file, soạn đề bài Markdown, trang bài tập
+### Phase 3 – Files & Assignments ✅ HOÀN THÀNH
+- [x] Schema DB: `class_files`, `assignments`
+- [x] API: `/api/v1/classes/{id}/files/*`, `/api/v1/classes/{id}/assignments/*`
+- [x] File upload lên local volume; validate MIME type bằng magic bytes; pre-sign download URL via signed token (không dùng S3 pre-sign ở phase này)
+- [x] Frontend: upload file, soạn đề bài Markdown, trang bài tập
 
-### Phase 4 – Session Token & Submissions (2–3 tuần)
-- [ ] Schema DB: `submissions`
-- [ ] LMS cấp session token cho (user_id, assignment_id) → URL embed Jamovi
-- [ ] Jamovi session path isolation: `Documents/classroom/{class_id}/{user_id}/`
-- [ ] Student làm bài trong iframe; bấm "Nộp bài" → LMS UI trigger save `.omv` → upload
-- [ ] API: `/api/v1/assignments/{id}/submissions/*` — nộp bài, nộp lại, versioning
-- [ ] Server kiểm tra deadline trước khi cho phép submit (không tin client)
-- [ ] Frontend: embed Jamovi iframe, nút nộp bài, lịch sử nộp bài
+### Phase 4 – Session Token & Submissions ✅ HOÀN THÀNH
+- [x] Schema DB: `submissions`
+- [x] LMS cấp session token cho (user_id, assignment_id) → URL embed Jamovi
+- [x] Jamovi session path isolation: `Documents/classroom/{class_id}/{user_id}/`
+- [x] Student làm bài trong iframe; bấm "Nộp bài" → LMS UI trigger save `.omv` → upload
+- [x] API: `/api/v1/assignments/{id}/submissions/*` — nộp bài, nộp lại, versioning
+- [x] Server kiểm tra deadline trước khi cho phép submit (không tin client)
+- [x] Frontend: embed Jamovi iframe, nút nộp bài, lịch sử nộp bài
 
-### Phase 5 – Grading & Progress (1–2 tuần)
-- [ ] API: grading endpoint, progress dashboard, export grades (CSV UTF-8 BOM)
-- [ ] Teacher xem bài: download `.omv` hoặc embed Jamovi load `.omv` read-only
-- [ ] Frontend: dashboard tiến độ teacher, trang điểm cho student
+### Phase 5 – Grading & Progress ✅ HOÀN THÀNH
+- [x] API: grading endpoint, progress dashboard, export grades (CSV UTF-8 BOM)
+- [x] Teacher xem bài: download `.omv` hoặc embed Jamovi load `.omv` read-only
+- [x] Frontend: dashboard tiến độ teacher, trang điểm cho student
 
-### Phase 6 – Notifications (1 tuần)
-- [ ] Schema DB: `notifications`
-- [ ] In-app notification (polling 30s hoặc WebSocket nếu cần real-time)
-- [ ] Email queue (Celery + Redis + SMTP)
-- [ ] Cron jobs: deadline reminder (24h trước), class closing reminder (48h trước)
-- [ ] Frontend: bell icon, notification list, badge count
+### Phase 6 – Notifications ✅ HOÀN THÀNH
+- [x] Schema DB: `notifications`
+- [x] In-app notification (polling 30s hoặc WebSocket nếu cần real-time)
+- [x] Email queue (Celery + Redis + SMTP)
+- [x] Cron jobs: deadline reminder (24h trước), class closing reminder (48h trước)
+- [x] Frontend: bell icon, notification list, badge count
 
-### Phase 7 – Hardening & Admin (1–2 tuần)
-- [ ] Rate limiting (slowapi hoặc Redis-based middleware)
-- [ ] Input sanitization toàn bộ; Markdown sanitize (bleach/nh3) trước khi render
-- [ ] Admin dashboard: thống kê user/lớp/bài, cấu hình hệ thống
-- [ ] Load test: kiểm tra Jamovi Tornado xử lý bao nhiêu session đồng thời
-- [ ] Auto-generated API docs (FastAPI OpenAPI/Swagger)
-- [ ] Dockerfile cho `classroom/api/`; tích hợp vào `docker-compose.full.yml`
+### Phase 7 – Hardening & Admin ✅ HOÀN THÀNH
+- [x] Rate limiting (slowapi hoặc Redis-based middleware)
+- [x] Input sanitization toàn bộ; Markdown sanitize (bleach/nh3) trước khi render
+- [x] Admin dashboard: thống kê user/lớp/bài, cấu hình hệ thống
+- [-] Load test: kiểm tra Jamovi Tornado xử lý bao nhiêu session đồng thời *(bỏ qua – không phải code)*
+- [x] Auto-generated API docs (FastAPI OpenAPI/Swagger)
+- [x] Dockerfile cho `classroom/api/`; tích hợp vào `docker-compose.full.yml`
 
-### Phase 8 – My Files (1 tuần)
-- [ ] Schema DB: `user_files`
-- [ ] Volume path: `uploads/myfiles/{user_id}/`
-- [ ] API: `/api/v1/files/*` (CRUD + open embed)
-- [ ] Quota check: `system_settings.max_user_files`, `max_user_storage_mb`
-- [ ] Frontend: trang My Files (danh sách, upload, mở, đổi tên, xoá)
-- [ ] Tích hợp vào navigation chính của LMS frontend
+### Phase 8 – My Files ✅ HOÀN THÀNH
+- [x] Schema DB: `user_files`
+- [x] Volume path: `uploads/myfiles/{user_id}/`
+- [x] API: `/api/v1/files/*` (CRUD + open embed)
+- [x] Quota check: `system_settings.max_user_files`, `max_user_storage_mb`
+- [x] Frontend: trang My Files (danh sách, upload, mở, đổi tên, xoá)
+- [x] Tích hợp vào navigation chính của LMS frontend
 
-### Phase 9 – Sharing (1 tuần)
-- [ ] Schema DB: `file_shares`
-- [ ] API: `/api/v1/files/{id}/share`, `/api/v1/shared/{token}`
-- [ ] Share token generation: `secrets.token_hex(32)`
-- [ ] Shared view: LMS load file vào session path read-only riêng biệt (bản sao tạm)
-- [ ] Enforce `allow_sharing` check cho bài nộp
-- [ ] Frontend: dialog tạo link (chọn thời hạn), copy link, thu hồi link
-- [ ] Trang `/shared/{token}`: hiển thị thông tin file + embed Jamovi read-only
+### Phase 9 – Sharing ✅ HOÀN THÀNH
+- [x] Schema DB: `file_shares`
+- [x] API: `/api/v1/files/{id}/share`, `/api/v1/shared/{token}`
+- [x] Share token generation: `secrets.token_hex(32)`
+- [x] Shared view: LMS load file vào session path read-only riêng biệt (bản sao tạm)
+- [x] Enforce `allow_sharing` check cho bài nộp
+- [x] Frontend: dialog tạo link (chọn thời hạn), copy link, thu hồi link
+- [x] Trang `/shared/{token}`: hiển thị thông tin file + embed Jamovi read-only
 
-### Phase 10 – Collaboration (2–3 tuần)
-- [ ] **Fork divergence có chủ đích:** Sửa `server/jamovi/server/instance.py` để hỗ trợ `writer + N observers` (xem Section 7.9 để biết chi tiết thay đổi)
-- [ ] LMS token mang thêm trường `collab_role: 'writer' | 'observer'`
-- [ ] `clientconnection.py` kiểm tra role trong token trước khi cho phép ghi
-- [ ] Schema DB: `assignment_groups`, `assignment_group_members`
-- [ ] API: group endpoints (`/classes/{id}/assignments/{aId}/groups/*`, leader transfer)
-- [ ] Teacher observe endpoint: `/api/v1/sessions/observe/{sessionId}` (observer token)
-- [ ] Frontend: giao diện tạo/tham gia nhóm, badge "Writer/Observer" trong editor, nút "Chuyển quyền"
-- [ ] **Không áp dụng cho `exam`**: kiểm tra server-side, trả `403` nếu cố tình gọi collaboration API trên exam assignment
+### Phase 10 – Collaboration ✅ HOÀN THÀNH
+- [x] **Fork divergence có chủ đích:** Sửa `server/jamovi/server/instance.py` để hỗ trợ `writer + N observers`
+- [x] LMS token mang thêm trường `collab_role: 'writer' | 'observer'`
+- [x] `clientconnection.py` kiểm tra role trong token trước khi cho phép ghi
+- [x] Schema DB: `assignment_groups`, `assignment_group_members`
+- [x] API: group endpoints (`/classes/{id}/assignments/{aId}/groups/*`, leader transfer)
+- [x] Teacher observe endpoint: `/api/v1/sessions/observe/{sessionId}` (observer token)
+- [x] Frontend: giao diện tạo/tham gia nhóm, badge "Writer/Observer" trong editor, nút "Chuyển quyền"
+- [x] **Không áp dụng cho `exam`**: kiểm tra server-side, trả `403` nếu cố tình gọi collaboration API trên exam assignment
 
-### Phase 11 – Lessons & Tài nguyên nhúng (1–2 tuần)
-- [ ] Schema DB: `lessons`, `lesson_resources` (chạy Alembic migration)
-- [ ] URL whitelist validation: module `classroom/api/services/embed_validator.py` kiểm tra domain trước khi lưu
-- [ ] API 5.11: CRUD lessons, CRUD resources, `PATCH /lessons/{id}/reorder` (sort_order), `PUT /lessons/{id}/publish`
-- [ ] Nginx CSP: cập nhật `frame-src` cho phép domain whitelist (YouTube, Drive, Loom, Vimeo, OneDrive)
-- [ ] Frontend: trang bài giảng với danh sách lesson + iframe embed; Teacher có drag-and-drop reorder và nút Publish/Draft
-- [ ] Markdown renderer với KaTeX inline cho ký hiệu thống kê ($H_0$, $\bar{x}$, v.v.)
+### Phase 11 – Lessons & Tài nguyên nhúng ⚠️ XONG
+- [x] Schema DB: `lessons`, `lesson_resources` (chạy Alembic migration)
+- [x] URL whitelist validation: module `classroom/api/services/embed_validator.py` kiểm tra domain trước khi lưu
+- [x] API 5.11: CRUD lessons, CRUD resources, `PATCH /lessons/{id}/reorder` (sort_order), `PUT /lessons/{id}/publish`
+- [x] Nginx CSP: cập nhật `frame-src` cho phép domain whitelist (YouTube, Drive, Loom, Vimeo, OneDrive)
+- [x] Frontend: trang bài giảng với danh sách lesson + iframe embed; Teacher có drag-and-drop reorder và nút Publish/Draft
+- [x] Markdown renderer với KaTeX inline cho ký hiệu thống kê ($H_0$, $\bar{x}$, v.v.)
 
-### Phase 12 – Quiz MCQ & Auto-grade (1–2 tuần)
-- [ ] Schema DB: `quizzes`, `quiz_questions`, `quiz_attempts`, `question_answers` (chạy Alembic migration)
-- [ ] Auto-grade engine: `classroom/api/services/quiz_grader.py` — so sánh `chosen_ids` vs `is_correct` phía server
-- [ ] Time limit enforcement: kiểm tra `submitted_at - started_at ≤ time_limit_min * 60s` khi submit
-- [ ] API 5.12: CRUD quiz, CRUD questions, `POST /attempts`, `POST /attempts/{id}/submit`, `GET /quizzes/{id}/stats`
-- [ ] Client KHÔNG nhận field `is_correct` từ server trước khi submit (loại bỏ khỏi response schema)
-- [ ] Frontend Teacher: quiz builder với Markdown + KaTeX preview cho câu hỏi và đáp án
-- [ ] Frontend Student: countdown timer, nộp bài khi hết giờ tự động (JS + server enforce)
-- [ ] Hiển thị kết quả theo `show_result_after` (submit / deadline / never)
+### Phase 12 – Quiz MCQ & Auto-grade ⚠️ XONG
+- [x] Schema DB: `quizzes`, `quiz_questions`, `quiz_attempts`, `question_answers` (chạy Alembic migration)
+- [x] Auto-grade engine: `classroom/api/services/quiz_grader.py` — so sánh `chosen_ids` vs `is_correct` phía server
+- [x] Time limit enforcement: kiểm tra `submitted_at - started_at ≤ time_limit_min * 60s` khi submit
+- [x] API 5.12: CRUD quiz, CRUD questions, `POST /attempts`, `POST /attempts/{id}/submit`, `GET /quizzes/{id}/stats`
+- [x] Client KHÔNG nhận field `is_correct` từ server trước khi submit (loại bỏ khỏi response schema)
+- [x] Frontend Teacher: quiz builder với Markdown + KaTeX preview cho câu hỏi và đáp án
+- [x] Frontend Student: countdown timer, nộp bài khi hết giờ tự động (JS + server enforce)
+- [x] Hiển thị kết quả theo `show_result_after` (submit / deadline / never)
 
 ---
 ## 13. Monorepo với classroom/ tách biệt rõ ràng

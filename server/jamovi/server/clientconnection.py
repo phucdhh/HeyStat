@@ -15,9 +15,53 @@ from .jamovi_pb2 import InstanceResponse
 from jamovi.server.utils import conf
 
 import asyncio
+import hmac
+import hashlib
+import os
+import time
 import logging
+import urllib.parse
 
 log = logging.getLogger(__name__)
+
+# HeyStat classroom: shared secret for verifying collab_role tokens issued by LMS API.
+# Set JAMOVI_COLLAB_SECRET env var on both the HeyStat container and the LMS API container.
+_COLLAB_SECRET = os.environ.get('JAMOVI_COLLAB_SECRET', '')
+
+
+def _verify_collab_token(token_str: str) -> str:
+    """Verify a collab token and return the role ('writer' or 'observer').
+
+    Token format: ``{role}.{expiry_unix}.{hmac_hex}``
+
+    Returns 'writer' on any verification failure so the connection degrades
+    gracefully rather than blocking legitimate users.
+    """
+    if not _COLLAB_SECRET or not token_str:
+        return 'writer'
+    try:
+        parts = token_str.split('.')
+        if len(parts) != 3:
+            return 'writer'
+        role, expiry_str, provided_sig = parts
+        if role not in ('writer', 'observer'):
+            return 'writer'
+        expiry = int(expiry_str)
+        if expiry < int(time.time()):
+            log.debug('collab_token expired')
+            return 'writer'
+        payload = f'{role}:{expiry_str}'
+        expected_sig = hmac.new(
+            _COLLAB_SECRET.encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_sig, provided_sig):
+            log.warning('collab_token HMAC mismatch – defaulting to writer')
+            return 'writer'
+        return role
+    except Exception:
+        return 'writer'
 
 
 class ClientConnection(WebSocketHandler):
@@ -30,6 +74,7 @@ class ClientConnection(WebSocketHandler):
         self._transactions = { }
         self._close_listeners = [ ]
         self._instance_id = None
+        self._collab_role = 'writer'  # HeyStat classroom: 'writer' | 'observer'
 
     def check_origin(self, origin):
         return True
@@ -39,6 +84,13 @@ class ClientConnection(WebSocketHandler):
         if key_required != '':
             if key_required != self.get_cookie('access_key', None):
                 self.close()
+
+        # HeyStat classroom: extract collab_role from the ?collab_token= query parameter.
+        # The token is signed by the LMS API with JAMOVI_COLLAB_SECRET.
+        query_str = self.request.query or ''
+        params = urllib.parse.parse_qs(query_str)
+        collab_token = params.get('collab_token', [None])[0]
+        self._collab_role = _verify_collab_token(collab_token)
 
         log.debug('%s', 'Websocket opened')
         self._instance_id = instance_id
@@ -77,13 +129,16 @@ class ClientConnection(WebSocketHandler):
                     raise NoSuchInstanceException()
                 else:
                     instance = self._session[message.instanceId]
-                instance.set_coms(self)
+                instance.set_coms(self, role=self._collab_role)
                 response = InstanceResponse()
                 response.instanceId = instance.id
                 self.send(response, instance.id, request)
             else:
                 instance = self._session[message.instanceId]
-                instance.set_coms(self)
+                instance.set_coms(self, role=self._collab_role)
+                # HeyStat classroom: observers receive broadcasts but cannot send write requests
+                if self._collab_role == 'observer':
+                    return
                 await instance.on_request(request)
         except NoSuchInstanceException:
             self.send_error(

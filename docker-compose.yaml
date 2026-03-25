@@ -59,6 +59,8 @@ services:
         # access-key enforcement without changing the configured value. This is
         # handy for local testing but SHOULD NOT be used in production.
         # JAMOVI_DISABLE_ACCESS_KEY: '1'
+        # HeyStat classroom Phase 10: shared secret for collab_role token verification
+        JAMOVI_COLLAB_SECRET: 'e371961a9dacabc68b0073c5b951283ec9fb1e90b3c8603a23e7e2c03722e44c'
 
     volumes:
       - ./Documents:/root/Documents
