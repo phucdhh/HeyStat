@@ -1,49 +1,35 @@
 <template>
-  <div>
+  <div class="class-list-page">
     <div class="page-header">
       <h1>Lớp học</h1>
-      <button @click="showJoin = true">+ Tham gia lớp</button>
-      <button v-if="auth.isTeacher" @click="showCreate = true">+ Tạo lớp</button>
+      <button class="btn-primary" @click="showJoin = true">+ Tham gia lớp</button>
     </div>
 
-    <div v-if="loading">Đang tải…</div>
-    <div v-else-if="classes.length === 0" class="empty">Bạn chưa tham gia lớp nào.</div>
+    <div v-if="loading" class="loading">Đang tải…</div>
+    <div v-else-if="!classes.length" class="empty">Bạn chưa tham gia lớp nào.</div>
     <div v-else class="grid">
-      <RouterLink
-        v-for="cls in classes" :key="cls.id"
-        :to="`/classes/${cls.id}`"
-        class="class-card"
-      >
-        <div class="cls-name">{{ cls.name }}</div>
-        <div class="cls-meta">{{ cls.description }}</div>
-        <div class="cls-meta">Giáo viên: {{ cls.teacher_name }}</div>
+      <RouterLink v-for="cls in classes" :key="cls.id" :to="`/classes/${cls.id}`" class="class-card">
+        <div class="cls-title">{{ cls.title }}</div>
+        <div class="cls-desc">{{ cls.description }}</div>
+        <div class="cls-teacher">👤 {{ cls.teacher_name }}</div>
       </RouterLink>
     </div>
 
     <!-- Join modal -->
     <div v-if="showJoin" class="modal-overlay" @click.self="showJoin = false">
       <div class="modal">
-        <h2>Tham gia lớp</h2>
-        <label>Mã lớp <input v-model="joinKey" placeholder="ABCD1234" /></label>
+        <h2>Tham gia lớp học</h2>
+        <div class="field">
+          <label>Mã lớp <span class="req">*</span></label>
+          <input class="form-input" v-model="joinKey" placeholder="VD: AB3X9K2W"
+                 @keyup.enter="joinClass" autofocus />
+        </div>
         <p v-if="joinError" class="error">{{ joinError }}</p>
         <div class="modal-actions">
-          <button @click="joinClass">Tham gia</button>
-          <button class="secondary" @click="showJoin = false">Huỷ</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Create modal (teacher) -->
-    <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal">
-        <h2>Tạo lớp mới</h2>
-        <label>Tên lớp <input v-model="newClass.name" required /></label>
-        <label>Mô tả <textarea v-model="newClass.description" rows="3" /></label>
-        <label>Số học viên tối đa <input v-model.number="newClass.max_students" type="number" /></label>
-        <p v-if="createError" class="error">{{ createError }}</p>
-        <div class="modal-actions">
-          <button @click="createClass">Tạo</button>
-          <button class="secondary" @click="showCreate = false">Huỷ</button>
+          <button class="btn-secondary" @click="showJoin = false">Huỷ</button>
+          <button class="btn-primary" :disabled="joining" @click="joinClass">
+            {{ joining ? 'Đang tham gia…' : 'Tham gia' }}
+          </button>
         </div>
       </div>
     </div>
@@ -51,21 +37,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/api/client'
-import { useAuthStore } from '@/stores/auth'
 
-const auth = useAuthStore()
 const classes = ref<any[]>([])
 const loading = ref(true)
 
 const showJoin = ref(false)
 const joinKey = ref('')
 const joinError = ref('')
-
-const showCreate = ref(false)
-const newClass = reactive({ name: '', description: '', max_students: 50 })
-const createError = ref('')
+const joining = ref(false)
 
 async function load() {
   loading.value = true
@@ -77,42 +58,45 @@ async function load() {
 
 async function joinClass() {
   joinError.value = ''
+  if (!joinKey.value.trim()) { joinError.value = 'Vui lòng nhập mã lớp'; return }
+  joining.value = true
   try {
-    await api.post('/classes/enroll', { enrollment_key: joinKey.value })
+    await api.post('/classes/join', { enrollment_key: joinKey.value.trim() })
     joinKey.value = ''
     showJoin.value = false
     await load()
-  } catch (e: any) { joinError.value = e?.response?.data?.detail ?? 'Không thể tham gia' }
-}
-
-async function createClass() {
-  createError.value = ''
-  try {
-    await api.post('/classes', newClass)
-    showCreate.value = false
-    await load()
-  } catch (e: any) { createError.value = e?.response?.data?.detail ?? 'Không thể tạo lớp' }
+  } catch (e: any) {
+    joinError.value = e?.response?.data?.detail ?? 'Không thể tham gia lớp'
+  } finally { joining.value = false }
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
+.class-list-page {}
 .page-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
-.page-header h1 { flex: 1; margin: 0; }
-button { padding: 0.5rem 1rem; border: none; border-radius: 4px; background: #1a1a2e; color: #fff; cursor: pointer; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
-.class-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1.2rem; text-decoration: none; color: #333; display: block; }
-.class-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.cls-name { font-weight: 700; font-size: 1.05rem; margin-bottom: 0.3rem; }
-.cls-meta { font-size: 0.85rem; color: #666; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 500; }
-.modal { background: #fff; border-radius: 8px; padding: 2rem; min-width: 320px; display: flex; flex-direction: column; gap: 0.8rem; }
-.modal h2 { margin: 0 0 0.5rem; }
-label { display: flex; flex-direction: column; font-size: 0.9rem; gap: 0.3rem; }
-input, textarea { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
-.modal-actions { display: flex; gap: 0.5rem; }
-.secondary { background: #eee; color: #333; }
-.error { color: red; font-size: 0.85rem; }
-.empty { color: #888; }
+.page-header h1 { flex: 1; margin: 0; color: var(--amber-800); }
+.loading { color: var(--color-text-muted); padding: 2rem 0; }
+.empty { color: var(--color-text-muted); padding: 2rem 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+.class-card { background: #fff; border: 1.5px solid var(--amber-200); border-radius: 12px; padding: 1.2rem; text-decoration: none; color: inherit; display: block; transition: box-shadow 0.15s, border-color 0.15s; }
+.class-card:hover { box-shadow: 0 4px 16px rgba(146,64,14,0.12); border-color: var(--amber-400); }
+.cls-title { font-weight: 700; font-size: 1rem; color: var(--amber-900); margin-bottom: 0.3rem; }
+.cls-desc { font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.5rem; line-height: 1.4; }
+.cls-teacher { font-size: 0.8rem; color: var(--amber-700); font-weight: 600; }
+.btn-primary { background: var(--color-primary); color: #fff; border: none; padding: 0.5rem 1.1rem; border-radius: 7px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-secondary { background: var(--amber-100); color: var(--amber-800); border: 1px solid var(--amber-300); padding: 0.5rem 1.1rem; border-radius: 7px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 500; }
+.modal { background: #fff; border-radius: 14px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+.modal h2 { color: var(--amber-800); margin: 0 0 1.25rem; font-size: 1.1rem; font-weight: 700; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 1rem; }
+.field > label { font-size: 0.875rem; font-weight: 600; color: var(--amber-800); }
+.req { color: #DC2626; }
+.form-input { padding: 0.5rem 0.7rem; border: 1.5px solid var(--amber-300); border-radius: 7px; font-size: 1rem; letter-spacing: 0.06em; }
+.form-input:focus { outline: none; border-color: var(--amber-500); }
+.modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
+.error { color: #DC2626; font-size: 0.85rem; background: #FEF2F2; border: 1px solid #FECACA; padding: 0.4rem 0.6rem; border-radius: 6px; margin: 0; }
 </style>

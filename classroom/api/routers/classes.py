@@ -171,7 +171,7 @@ async def create_class(
         max_students=body.max_students,
         starts_at=body.starts_at,
         ends_at=body.ends_at,
-        status="draft",
+        status="active",
     )
     db.add(cls)
     await db.flush()
@@ -343,3 +343,55 @@ async def regenerate_key(
     plain_key = _generate_enrollment_key()
     cls.enrollment_key = _hash_key(plain_key)
     return {"enrollment_key": plain_key}
+
+
+class JoinRequest(BaseModel):
+    enrollment_key: str
+
+
+@router.post("/join", status_code=201)
+async def join_by_key(
+    body: JoinRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join a class using only the enrollment key (no class_id needed)."""
+    # Find all active classes and test key against each
+    r = await db.execute(select(Class).where(Class.status == "active"))
+    classes = r.scalars().all()
+
+    matched = None
+    for cls in classes:
+        if cls.enrollment_key and _verify_key(body.enrollment_key, cls.enrollment_key):
+            matched = cls
+            break
+
+    if matched is None:
+        raise HTTPException(status_code=400, detail="Mã lớp không đúng hoặc lớp đã đóng")
+
+    class_id = matched.id
+
+    count_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.class_id == class_id, Enrollment.status == "active"
+        )
+    )
+    if (count_result.scalar() or 0) >= matched.max_students:
+        raise HTTPException(status_code=400, detail="Lớp học đã đầy")
+
+    existing = await db.execute(
+        select(Enrollment).where(
+            Enrollment.class_id == class_id,
+            Enrollment.user_id == current_user.id,
+        )
+    )
+    enr = existing.scalar_one_or_none()
+    if enr:
+        if enr.status == "active":
+            raise HTTPException(status_code=400, detail="Bạn đã tham gia lớp học này")
+        enr.status = "active"
+    else:
+        db.add(Enrollment(class_id=class_id, user_id=current_user.id))
+
+    return {"detail": "Tham gia lớp học thành công", "class_id": str(class_id), "title": matched.title}
+

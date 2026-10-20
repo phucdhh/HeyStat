@@ -1,0 +1,101 @@
+from types import SimpleNamespace
+
+from services.auto_grader import auto_grade
+from tests.test_omv_reader import make_omv
+from services.omv_reader import parse_omv
+
+DOC = parse_omv(make_omv())
+
+
+def assignment(grading_config=None, answer_key=None, max_score=10.0):
+    return SimpleNamespace(grading_config=grading_config, answer_key=answer_key, max_score=max_score)
+
+
+def test_returns_none_for_fully_manual_assignments():
+    assert auto_grade(assignment(), DOC, None) is None
+    assert auto_grade(assignment(grading_config={}, answer_key={}), DOC, None) is None
+
+
+def test_threshold_check_passes_and_fails_with_explanation():
+    config = {"checks": [
+        {"id": "anova_p", "label": "ANOVA có ý nghĩa", "op": "lte", "analysis": "One-Way ANOVA",
+         "column": "p", "value": 0.05, "points": 2},
+        {"id": "r2", "label": "Mức độ giải thích", "op": "gte", "table": "Model Fit",
+         "column": "R²", "value": 0.5, "points": 2, "explain": "R² phải đạt ít nhất .50."},
+    ]}
+    result = auto_grade(assignment(grading_config=config), DOC, None)
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id["anova_p"]["passed"] is True
+    assert by_id["anova_p"]["awarded"] == 2.0
+    assert by_id["r2"]["passed"] is False
+    assert by_id["r2"]["explanation"] == "R² phải đạt ít nhất .50."
+    assert result["earned"] == 2.0
+    assert result["possible"] == 4.0
+    assert result["score"] == 5.0  # scaled onto the assignment's 10-point max
+
+
+def test_checks_can_require_an_analysis_or_a_table():
+    config = {"checks": [
+        {"id": "ran", "op": "ran", "analysis": "linReg", "points": 1},
+        {"id": "coef", "op": "present", "table": "Model Coefficients", "points": 1},
+        {"id": "missing_table", "op": "present", "table": "Post Hoc", "points": 1},
+    ]}
+    result = auto_grade(assignment(grading_config=config), DOC, None)
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id["ran"]["passed"] is True
+    assert by_id["coef"]["passed"] is True
+    assert by_id["missing_table"]["passed"] is False
+    assert "chưa chạy phân tích" in by_id["missing_table"]["explanation"]
+
+
+def test_between_and_tolerance():
+    config = {"checks": [
+        {"id": "r_between", "op": "between", "table": "Model Fit", "column": "R",
+         "value": 0.1, "value2": 0.2, "points": 1},
+    ]}
+    result = auto_grade(assignment(grading_config=config), DOC, None)
+    assert result["items"][0]["passed"] is True
+
+
+def test_answer_key_numbers_and_text():
+    key = {"questions": [
+        {"id": "n", "label": "Số quan sát", "type": "number", "answer": 1047, "tolerance": 1, "points": 1},
+        {"id": "conclusion", "label": "Kết luận", "type": "text", "answer": ["Bác bỏ H0", "bác bỏ H0"], "points": 1},
+        {"id": "empty", "label": "Chưa làm", "type": "text", "answer": "x", "points": 1},
+    ]}
+    result = auto_grade(
+        assignment(answer_key=key),
+        DOC,
+        {"n": "1,047", "conclusion": "Bác bỏ H0", "empty": ""},
+    )
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id["n"]["passed"] is True
+    assert by_id["conclusion"]["passed"] is True
+    assert by_id["empty"]["passed"] is False
+    assert "bỏ trống" in by_id["empty"]["explanation"]
+    assert result["mistake_count"] == 1
+
+
+def test_text_answer_mismatch_explains_both_values():
+    key = {"questions": [{"id": "q", "label": "Yêu cầu", "type": "text", "answer": "ANOVA", "points": 1}]}
+    result = auto_grade(assignment(answer_key=key), DOC, {"q": "t-test"})
+    item = result["items"][0]
+    assert item["passed"] is False
+    assert "t-test" in item["explanation"] and "ANOVA" in item["explanation"]
+
+
+def test_feedback_lists_every_mistake_for_the_student():
+    config = {"checks": [{"id": "c", "label": "Bảng Shapiro-Wilk", "op": "present",
+                          "table": "Shapiro", "points": 1, "explain": "Chưa kiểm định chuẩn."}]}
+    result = auto_grade(assignment(grading_config=config, max_score=8.0), DOC, None)
+    assert result["score"] == 0.0
+    assert "Bảng Shapiro-Wilk" in result["feedback"]
+    assert "Chưa kiểm định chuẩn." in result["feedback"]
+
+
+def test_missing_omv_is_reported_instead_of_crashing():
+    config = {"checks": [{"id": "c", "label": "Bảng", "op": "lte", "table": "Model Fit",
+                          "column": "p", "value": 0.05, "points": 1}]}
+    result = auto_grade(assignment(grading_config=config), None, None)
+    assert result["items"][0]["passed"] is None
+    assert result["score"] == 0.0

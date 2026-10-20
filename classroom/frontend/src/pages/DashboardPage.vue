@@ -27,11 +27,13 @@
         <div class="card-hint">Phân tích & vẽ biểu đồ</div>
       </a>
     </div>
+    <MyAnalytics v-if="!auth.isTeacher" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
+import MyAnalytics from '@/components/MyAnalytics.vue'
 const auth = useAuthStore()
 </script>
 

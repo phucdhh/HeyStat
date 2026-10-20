@@ -17,11 +17,12 @@
       <thead><tr><th>Tên tệp</th><th>Kích thước</th><th>Ngày tải</th><th>Thao tác</th></tr></thead>
       <tbody>
         <tr v-for="f in files" :key="f.id">
-          <td>{{ f.original_name }}</td>
-          <td>{{ (f.size_bytes / 1024).toFixed(1) }} KB</td>
+          <td>{{ f.file_name }}</td>
+          <td>{{ f.file_size != null ? (f.file_size / 1024).toFixed(1) + ' KB' : '—' }}</td>
           <td>{{ new Date(f.created_at).toLocaleString('vi-VN') }}</td>
           <td class="actions-cell">
             <button class="small" @click="openInJamovi(f)">Mở Jamovi</button>
+            <button class="small secondary" @click="openRenameDialog(f)">Đổi tên</button>
             <button class="small secondary" @click="openShareDialog(f)">Chia sẻ</button>
             <button class="small danger" @click="deleteFile(f.id)">Xoá</button>
           </td>
@@ -29,11 +30,25 @@
       </tbody>
     </table>
 
+    <!-- ── Rename Dialog ── -->
+    <div v-if="renameDialog.open" class="modal-overlay" @click.self="renameDialog.open = false">
+      <div class="modal">
+        <h2>Đổi tên tệp</h2>
+        <label>Tên mới:</label>
+        <input v-model="renameDialog.newName" class="rename-input" @keyup.enter="confirmRename" />
+        <p v-if="renameDialog.error" class="error">{{ renameDialog.error }}</p>
+        <div class="modal-actions">
+          <button @click="confirmRename">Lưu</button>
+          <button class="secondary" @click="renameDialog.open = false">Huỷ</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Share Dialog ── -->
     <div v-if="shareDialog.open" class="modal-overlay" @click.self="closeShareDialog">
       <div class="modal">
         <h2>Chia sẻ tệp</h2>
-        <p class="file-name">{{ shareDialog.file?.original_name }}</p>
+<p class="file-name">{{ shareDialog.file?.file_name }}</p>
 
         <!-- If no link exists yet -->
         <template v-if="!shareDialog.link">
@@ -88,6 +103,32 @@ const shareDialog = reactive({
   link: '',
   error: '',
 })
+
+const renameDialog = reactive({
+  open: false,
+  file: null as any,
+  newName: '',
+  error: '',
+})
+
+function openRenameDialog(f: any) {
+  renameDialog.file = f
+  renameDialog.newName = f.file_name
+  renameDialog.error = ''
+  renameDialog.open = true
+}
+
+async function confirmRename() {
+  const name = renameDialog.newName.trim()
+  if (!name) { renameDialog.error = 'Tên không được để trống'; return }
+  try {
+    await api.patch(`/files/${renameDialog.file.id}`, { file_name: name })
+    renameDialog.open = false
+    await load()
+  } catch (err: any) {
+    renameDialog.error = err?.response?.data?.detail ?? 'Đổi tên thất bại'
+  }
+}
 
 async function load() {
   loading.value = true
@@ -171,8 +212,34 @@ async function revokeShareLink() {
   }
 }
 
-function openInJamovi(f: any) {
-  window.open(`/?open=${encodeURIComponent(f.jamovi_path)}`, '_blank')
+async function openInJamovi(f: any) {
+  try {
+    // 1. Download the file blob via the authenticated API
+    const token = localStorage.getItem('access_token')
+    const resp = await fetch(`/api/v1/files/${f.id}/open`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const blob = await resp.blob()
+
+    // 2. POST the blob to Jamovi's /open endpoint (same origin, auth already in cookie)
+    const form = new FormData()
+    form.append('file', blob, f.file_name)
+    const openResp = await fetch('/open', { method: 'POST', body: form })
+    const text = await openResp.text()
+    const lines = text.trim().split('\n')
+    const result = JSON.parse(lines[lines.length - 1])
+    if (result.status === 'OK' && result.url) {
+      // Jamovi returns a relative URL like "abc123/" — prefix with / to make it root-relative
+      const url = result.url.startsWith('/') ? result.url : '/' + result.url
+      // Pass file ID so the toolbar can overwrite the same file on save
+      window.open(url + '?hs_file_id=' + f.id, '_blank')
+    } else {
+      throw new Error(result.message || 'Không thể mở file')
+    }
+  } catch (err: any) {
+    alert(err?.message ?? 'Không thể mở file trong Jamovi')
+  }
 }
 
 onMounted(load)
@@ -209,5 +276,6 @@ button { padding: 0.5rem 1rem; background: #1a1a2e; color: #fff; border: none; b
 .modal-actions { display: flex; gap: 0.5rem; }
 .link-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
 .link-input { flex: 1; padding: 0.4rem; font-family: monospace; font-size: 0.8rem; border: 1px solid #cce3f5; border-radius: 4px; background: #f6fbff; }
+.rename-input { width: 100%; padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; margin-bottom: 1rem; box-sizing: border-box; }
 </style>
 

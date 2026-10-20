@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -177,24 +177,59 @@ async def delete_my_file(
     await db.delete(uf)
 
 
+@router.put("/{file_id}", response_model=FileResponse_)
+async def replace_my_file(
+    file_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace the content of an existing file (overwrite)."""
+    r = await db.execute(select(UserFile).where(UserFile.id == file_id, UserFile.user_id == current_user.id))
+    uf = r.scalar_one_or_none()
+    if not uf:
+        raise HTTPException(404, "File không tồn tại")
+
+    if not validate_file_extension(file.filename or uf.file_name):
+        raise HTTPException(400, "Định dạng file không được hỗ trợ")
+
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(400, f"File vượt quá giới hạn {settings.max_file_size_mb}MB")
+    if not validate_mime_type(data):
+        raise HTTPException(400, "Loại file không hợp lệ")
+
+    full_path = Path(settings.upload_dir) / uf.file_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiofiles.open(full_path, "wb") as fp:
+        await fp.write(data)
+
+    uf.file_size = len(data)
+    uf.updated_at = datetime.now(tz=timezone.utc)
+    return FileResponse_(id=str(uf.id), file_name=uf.file_name, file_size=uf.file_size,
+                         description=uf.description, is_public=uf.is_public, created_at=uf.created_at)
+
+
 @router.get("/{file_id}/open")
 async def open_my_file(
     file_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Return the raw .omv file so the browser can POST it to Jamovi's /open endpoint."""
     r = await db.execute(select(UserFile).where(UserFile.id == file_id, UserFile.user_id == current_user.id))
     uf = r.scalar_one_or_none()
     if not uf:
         raise HTTPException(404)
-    session_path = f"myfiles/{current_user.id}"
-    # Ensure the file is in the session dir
-    dest_link = Path(settings.jamovi_data_root) / session_path
-    dest_link.mkdir(parents=True, exist_ok=True)
-    r_client = await get_redis()
-    session_token = secrets.token_hex(32)
-    await r_client.setex(f"session:{session_token}", 28800, f"{current_user.id}|{session_path}|writer")
-    return {"embed_url": f"/?session={session_token}&path={session_path}&file={uf.file_path}"}
+    full_path = Path(settings.upload_dir) / uf.file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File không tồn tại trên server")
+    return FileResponse(
+        path=str(full_path),
+        filename=uf.file_name,
+        media_type="application/octet-stream",
+    )
 
 
 # ─── Sharing ────────────────────────────────────────────────────
@@ -247,6 +282,7 @@ async def revoke_share(
 @shared_router.get("/shared/{token}")
 async def view_shared(
     token: str,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     r = await db.execute(select(FileShare).where(FileShare.share_token == token))
@@ -266,10 +302,76 @@ async def view_shared(
         uf = fr.scalar_one_or_none()
         if not uf:
             raise HTTPException(404)
+        file_name = uf.file_name
+        size_bytes: int | None = uf.file_size
+    else:
+        # submission
+        sr = await db.execute(select(Submission).where(Submission.id == share.file_id))
+        sub = sr.scalar_one_or_none()
+        if not sub or not sub.file_path:
+            raise HTTPException(404)
+        file_name = "submission.omv"
+        size_bytes = None
+
+    # Get owner name and file size
+    owner_r = await db.execute(select(User).where(User.id == share.shared_by))
+    owner = owner_r.scalar_one_or_none()
+    owner_name = owner.full_name if owner else ""
+
+    size_bytes = uf.file_size if share.file_type == "user_file" else None  # type: ignore[name-defined]
+
+    # Issue a temporary shared-viewer session cookie so nginx auth_request passes
+    # for subsequent Jamovi requests (/open, /{session_id}/...)
+    r_client = await get_redis()
+    session_key = secrets.token_hex(32)
+    ttl = 7200  # 2 hours
+    if share.expires_at:
+        remaining = int(
+            (share.expires_at.replace(tzinfo=timezone.utc) - datetime.now(tz=timezone.utc))
+            .total_seconds()
+        )
+        ttl = max(300, min(ttl, remaining))
+    await r_client.setex(f"shared_session:{session_key}", ttl, "1")
+    response.set_cookie(
+        key="hs_shared_session",
+        value=session_key,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=ttl,
+        path="/",
+    )
+
+    return {
+        "file_name": file_name,
+        "owner_username": owner_name,
+        "size_bytes": size_bytes,
+        "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+    }
+
+
+@shared_router.get("/shared/{token}/file")
+async def download_shared_file(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the raw file bytes for a shared link (no auth required)."""
+    r = await db.execute(select(FileShare).where(FileShare.share_token == token))
+    share = r.scalar_one_or_none()
+    if not share:
+        raise HTTPException(404, "Link chia sẻ không tồn tại hoặc đã bị thu hồi")
+    now = datetime.now(tz=timezone.utc)
+    if share.expires_at and now > share.expires_at.replace(tzinfo=timezone.utc):
+        raise HTTPException(410, "Link chia sẻ đã hết hạn")
+
+    if share.file_type == "user_file":
+        fr = await db.execute(select(UserFile).where(UserFile.id == share.file_id))
+        uf = fr.scalar_one_or_none()
+        if not uf:
+            raise HTTPException(404)
         file_path = uf.file_path
         file_name = uf.file_name
     else:
-        # submission
         sr = await db.execute(select(Submission).where(Submission.id == share.file_id))
         sub = sr.scalar_one_or_none()
         if not sub or not sub.file_path:
@@ -277,21 +379,12 @@ async def view_shared(
         file_path = sub.file_path
         file_name = "submission.omv"
 
-    # Create a temp read-only copy
-    src = Path(settings.upload_dir) / file_path
-    tmp_dir = Path(settings.upload_dir) / "shared_tmp" / token
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    tmp_file = tmp_dir / file_name
-    if not tmp_file.exists() and src.exists():
-        import shutil
-        shutil.copy2(src, tmp_file)
+    full_path = Path(settings.upload_dir) / file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File không tồn tại trên server")
 
-    r_client = await get_redis()
-    session_token = secrets.token_hex(32)
-    session_path = f"shared_tmp/{token}"
-    await r_client.setex(f"session:{session_token}", 3600, f"anonymous|{session_path}|observer")
-    return {
-        "embed_url": f"/?session={session_token}&path={session_path}&readonly=1",
-        "file_name": file_name,
-        "expires_at": share.expires_at.isoformat() if share.expires_at else None,
-    }
+    return FileResponse(
+        path=str(full_path),
+        filename=file_name,
+        media_type="application/octet-stream",
+    )

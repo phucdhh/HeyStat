@@ -27,6 +27,8 @@ from routers.progress import (
 from routers.lessons import router as lessons_router
 from routers.quizzes import router as quizzes_router
 from routers.my_files import router as my_files_router, shared_router
+from routers.analytics import router as analytics_router
+from routers.help import router as help_router
 
 
 @asynccontextmanager
@@ -72,6 +74,8 @@ app.include_router(lessons_router,      prefix="/api/v1")
 app.include_router(quizzes_router,      prefix="/api/v1")
 app.include_router(my_files_router,     prefix="/api/v1")
 app.include_router(shared_router,       prefix="/api/v1")
+app.include_router(analytics_router,    prefix="/api/v1")
+app.include_router(help_router,         prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

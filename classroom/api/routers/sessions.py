@@ -3,18 +3,18 @@ import uuid
 import secrets
 import hmac
 import hashlib
-import os
 import time
 from pathlib import Path
+from typing import Optional
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 
 from database import get_db
-from models import Assignment, Enrollment, AssignmentGroup, AssignmentGroupMember, Class, User, UserRole, Role
+from models import Assignment, Enrollment, AssignmentGroup, AssignmentGroupMember, ClassFile, User, UserRole, Role
 from auth.deps import get_current_user
 from auth.redis_client import get_redis
 from config import get_settings
@@ -54,6 +54,12 @@ class SessionTokenResponse(BaseModel):
     embed_url: str
     session_token: str
     collab_role: str  # 'writer' | 'observer'
+    session_path: str
+    assignment_id: str
+    # Query string the browser must append to the URL jamovi returns from /open
+    session_query: str
+    # Dataset the browser hands to jamovi's /open to start the student's clone
+    dataset: Optional[dict] = None
 
 
 @router.post("/token", response_model=SessionTokenResponse)
@@ -102,9 +108,17 @@ async def get_session_token(
     else:
         session_path = f"classroom/{assignment.class_id}/{current_user.id}"
 
-    # Create session directory
-    full_session_dir = Path(settings.jamovi_data_root) / session_path
-    full_session_dir.mkdir(parents=True, exist_ok=True)
+    # Clone name the student sees in jamovi: Dataset_[Student]_[Assignment].<ext>
+    dataset = None
+    if assignment.file_id:
+        fr = await db.execute(select(ClassFile).where(ClassFile.id == assignment.file_id))
+        cf = fr.scalar_one_or_none()
+        if cf:
+            ext = Path(cf.file_name).suffix or ".omv"
+            dataset = {
+                "file_name": f"Dataset_{str(current_user.id)[:8]}_{str(assignment.id)[:8]}{ext}",
+                "download_url": f"/api/v1/assignments/{assignment.id}/dataset",
+            }
 
     # Store token in Redis
     r_client = await get_redis()
@@ -112,35 +126,56 @@ async def get_session_token(
     token_data = f"{current_user.id}|{session_path}|{collab_role}"
     await r_client.setex(f"session:{session_token}", SESSION_TOKEN_TTL, token_data)
 
-    embed_url = f"/?session={session_token}&path={session_path}"
+    # The browser opens jamovi with the cloned dataset, and jamovi hands back an
+    # instance URL; this query is appended to it so the writer/observer role and
+    # the student's session directory survive into the jamovi session.
+    session_query = f"session={session_token}&path={session_path}"
     collab_param = _make_collab_token(collab_role)
     if collab_param:
-        embed_url += f"&collab_token={collab_param}"
+        session_query += f"&collab_token={collab_param}"
+
     return SessionTokenResponse(
-        embed_url=embed_url,
+        embed_url=f"/?{session_query}",
         session_token=session_token,
         collab_role=collab_role,
+        session_path=session_path,
+        assignment_id=str(assignment.id),
+        session_query=session_query,
+        dataset=dataset,
     )
+
+
+class RevokeRequest(BaseModel):
+    session_token: str
 
 
 @router.delete("/token", status_code=204)
 async def revoke_session_token(
-    token: str,
+    body: RevokeRequest,
     current_user: User = Depends(get_current_user),
 ):
     r_client = await get_redis()
-    await r_client.delete(f"session:{token}")
+    await r_client.delete(f"session:{body.session_token}")
 
 
 @router.post("/snapshot", status_code=201)
 async def save_snapshot(
-    assignment_id: uuid.UUID,
+    assignment_id: uuid.UUID = Form(...),
+    file: UploadFile = File(...),
+    report: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Draft-save endpoint: client calls this with the .omv blob to create a draft submission."""
+    """Đồng bộ kết quả: the browser captures jamovi's current state and stores it
+    as a draft submission, returning the output tables to pick evidence from.
+
+    ``report`` is the HTML jamovi rendered in the student's browser: a file saved
+    by the server contains analysis results as RDS blobs and no readable report,
+    so the tables only exist once the browser hands them over.
+    """
     from routers.submissions import _create_submission
-    return await _create_submission(assignment_id, current_user, db, is_final=False)
+
+    return await _create_submission(assignment_id, current_user, db, file, is_final=False, report=report)
 
 
 @router.get("/observe/{session_id}", response_model=SessionTokenResponse)
@@ -162,17 +197,21 @@ async def observe_session(
     parts = token_data.split("|")
     session_path = parts[1] if len(parts) >= 2 else ""
 
-    # Block observation for exam sessions
-    # exam check: look at assignment — if path contains known pattern this can be enhanced
-    # For now: issue observer token
     obs_token = secrets.token_hex(32)
     await r_client.setex(
         f"session:{obs_token}",
         SESSION_TOKEN_TTL,
         f"{current_user.id}|{session_path}|observer",
     )
+    session_query = f"session={obs_token}&path={session_path}&mode=observe"
+    collab_param = _make_collab_token("observer")
+    if collab_param:
+        session_query += f"&collab_token={collab_param}"
     return SessionTokenResponse(
-        embed_url=f"/?session={obs_token}&path={session_path}&mode=observe",
+        embed_url=f"/?{session_query}",
         session_token=obs_token,
         collab_role="observer",
+        session_path=session_path,
+        assignment_id="",
+        session_query=session_query,
     )

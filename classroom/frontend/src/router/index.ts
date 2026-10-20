@@ -25,6 +25,7 @@ const router = createRouter({
         { path: 'classes/:classId/quizzes/new', name: 'QuizBuilder', component: () => import('@/pages/QuizBuilderPage.vue'), meta: { requiresTeacher: true } },
         { path: 'classes/:classId/quizzes/:quizId', name: 'QuizView', component: () => import('@/pages/QuizViewPage.vue') },
         { path: 'files', name: 'MyFiles', component: () => import('@/pages/MyFilesPage.vue') },
+        { path: 'help', name: 'Help', component: () => import('@/pages/HelpPage.vue') },
         { path: 'teacher', name: 'TeacherDashboard', component: () => import('@/pages/TeacherDashboardPage.vue'), meta: { requiresTeacher: true } },
         { path: 'admin', name: 'AdminPanel', component: () => import('@/pages/AdminPanelPage.vue'), meta: { requiresAdmin: true } },
         { path: 'profile', name: 'Profile', component: () => import('@/pages/ProfilePage.vue') },

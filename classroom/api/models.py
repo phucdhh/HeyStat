@@ -137,6 +137,10 @@ class Assignment(Base):
     allow_resubmit: Mapped[bool] = mapped_column(Boolean, default=True)
     group_size: Mapped[int] = mapped_column(SmallInteger, default=1)
     allow_sharing: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Teacher's answer key: {"questions": [{"id","label","type","answer","tolerance","points","explain"}]}
+    answer_key: Mapped[Optional[dict]] = mapped_column(JSONB)
+    # Auto-grading criteria for jamovi output: {"checks": [{"id","label","analysis","table","column","row","op","value","points","explain"}]}
+    grading_config: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = now_col()
     updated_at: Mapped[datetime] = now_col()
 
@@ -184,6 +188,10 @@ class Submission(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     session_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB)
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
+    # Student's answers to the sidebar questions: {"qid": value}
+    answers: Mapped[Optional[dict]] = mapped_column(JSONB)
+    # Result of running answer_key + grading_config against this submission
+    auto_grade: Mapped[Optional[dict]] = mapped_column(JSONB)
     submitted_at: Mapped[datetime] = now_col()
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
     score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))

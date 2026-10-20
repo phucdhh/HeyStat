@@ -1,6 +1,7 @@
 """Class files router – upload, download, delete."""
 import uuid
 import os
+import secrets
 import aiofiles
 from pathlib import Path
 from typing import Optional
@@ -163,3 +164,52 @@ async def delete_file(
     if full_path.exists():
         full_path.unlink(missing_ok=True)
     await db.delete(cf)
+
+
+@router.post("/classes/{class_id}/files/{file_id}/open-url", status_code=201)
+async def get_file_open_url(
+    class_id: uuid.UUID,
+    file_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a short-lived one-time URL so Jamovi can fetch the file without JWT."""
+    cls = await _get_class_or_404(db, class_id)
+    await _check_class_access(db, cls, current_user)
+    r = await db.execute(
+        select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id)
+    )
+    cf = r.scalar_one_or_none()
+    if not cf:
+        raise HTTPException(404, "File không tồn tại")
+
+    from auth.redis_client import get_redis
+    token = secrets.token_hex(24)
+    r_client = await get_redis()
+    await r_client.setex(f"file_ot:{token}", 300, str(cf.id))  # 5 min TTL, one-time
+    return {"token": token, "filename": cf.file_name}
+
+
+@router.get("/files/ot/{token}")
+async def one_time_download(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """No-auth one-time download – Jamovi fetches from this URL to open the file."""
+    from auth.redis_client import get_redis
+    r_client = await get_redis()
+    file_id_str = await r_client.getdel(f"file_ot:{token}")
+    if not file_id_str:
+        raise HTTPException(404, "Token không hợp lệ hoặc đã hết hạn")
+    try:
+        file_id = uuid.UUID(file_id_str if isinstance(file_id_str, str) else file_id_str.decode())
+    except ValueError:
+        raise HTTPException(404, "Token không hợp lệ")
+    r = await db.execute(select(ClassFile).where(ClassFile.id == file_id))
+    cf = r.scalar_one_or_none()
+    if not cf:
+        raise HTTPException(404, "File không tồn tại")
+    full_path = Path(settings.upload_dir) / cf.file_path
+    if not full_path.exists():
+        raise HTTPException(404, "File không tồn tại trên server")
+    return FileResponse(str(full_path), filename=cf.file_name)

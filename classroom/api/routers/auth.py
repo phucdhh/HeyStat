@@ -128,21 +128,41 @@ async def refresh(body: RefreshRequest, response: Response, db: AsyncSession = D
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(body: RefreshRequest, response: Response):
-    await revoke_refresh_token(body.refresh_token)
+async def logout(request: Request, response: Response):
+    # Revoke the hs_session cookie (refresh token) if present
+    session = request.cookies.get(_SESSION_COOKIE)
+    if session:
+        await revoke_refresh_token(session)
+    # Also accept refresh_token in JSON body for backward compat
+    try:
+        body = await request.json()
+        if isinstance(body, dict) and body.get("refresh_token"):
+            await revoke_refresh_token(body["refresh_token"])
+    except Exception:
+        pass
     _clear_session_cookie(response)
 
 
 @router.get("/check", status_code=status.HTTP_200_OK)
 async def auth_check(request: Request):
-    """Lightweight endpoint for Nginx auth_request. Validates hs_session cookie."""
+    """Lightweight endpoint for Nginx auth_request. Validates hs_session cookie
+    OR a temporary hs_shared_session cookie issued for public shared-file viewing."""
+    # 1. Regular authenticated user
     session = request.cookies.get(_SESSION_COOKIE)
-    if not session:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    user_id = await validate_refresh_token(session)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Session expired")
-    return {"ok": True}
+    if session:
+        user_id = await validate_refresh_token(session)
+        if user_id:
+            return {"ok": True}
+
+    # 2. Temporary shared-viewer session (no login required)
+    shared_session = request.cookies.get("hs_shared_session")
+    if shared_session:
+        r = await get_redis()
+        valid = await r.get(f"shared_session:{shared_session}")
+        if valid:
+            return {"ok": True}
+
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 @router.post("/verify-email", status_code=status.HTTP_204_NO_CONTENT)

@@ -42,7 +42,10 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await axios.post('/api/v1/auth/logout', {}, { withCredentials: true })
+    } catch {}
     accessToken.value = null
     user.value = null
     localStorage.removeItem('access_token')

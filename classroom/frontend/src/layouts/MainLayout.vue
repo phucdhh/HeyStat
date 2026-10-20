@@ -13,6 +13,9 @@
         <RouterLink to="/files" class="nav-link">
           <span class="nav-icon">📁</span> Tệp của tôi
         </RouterLink>
+        <RouterLink to="/help" class="nav-link">
+          <span class="nav-icon">📖</span> Hướng dẫn đọc kết quả
+        </RouterLink>
         <a href="/" target="_blank" class="nav-link heystat-link">
           <span class="nav-icon">📊</span> Mở HeyStat
           <span class="ext-icon">↗</span>

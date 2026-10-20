@@ -19,7 +19,10 @@
       <div v-else-if="!classes.length" class="empty">Chưa có lớp nào.</div>
       <div v-else class="grid">
         <div v-for="cls in classes" :key="cls.id" class="class-card">
-          <div class="cls-title">{{ cls.title }}</div>
+          <div class="cls-header">
+            <div class="cls-title">{{ cls.title }}</div>
+            <span class="status-badge" :class="cls.status">{{ statusLabel(cls.status) }}</span>
+          </div>
           <div class="cls-dates">
             <span>{{ fmtDate(cls.starts_at) }}</span> – <span>{{ fmtDate(cls.ends_at) }}</span>
           </div>
@@ -28,7 +31,9 @@
           </div>
           <div class="cls-actions">
             <button class="btn-sm" @click="exportGrades(cls.id)">Xuất bảng điểm</button>
-            <button class="btn-sm secondary" @click="copyKey(cls)">Sao chép mã lớp</button>
+            <button class="btn-sm secondary" @click="regenerateKey(cls)">📋 Lấy mã lớp</button>
+            <button v-if="cls.status === 'draft'" class="btn-sm activate" @click="toggleStatus(cls, 'active')">✅ Kích hoạt</button>
+            <button v-else-if="cls.status === 'active'" class="btn-sm close-btn" @click="toggleStatus(cls, 'draft')">🔒 Đóng tạm</button>
           </div>
         </div>
       </div>
@@ -92,6 +97,18 @@
     </div>
 
     <div v-if="copiedMsg" class="toast">{{ copiedMsg }}</div>
+    <!-- Key display overlay -->
+    <div v-if="displayedKey" class="modal-overlay" @click.self="displayedKey = ''">
+      <div class="modal key-modal">
+        <h2>Mã tham gia lớp</h2>
+        <p class="key-note">Chia sẻ mã này cho học viên. Sau khi đóng cửa sổ bạn không thể xem lại mã này.</p>
+        <div class="key-display">{{ displayedKey }}</div>
+        <div class="modal-actions">
+          <button class="btn-primary" @click="doCopyKey">📋 Sao chép</button>
+          <button class="btn-secondary" @click="displayedKey = ''">Đóng</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -114,6 +131,7 @@ const endIso = () => {
 const newClass = reactive({ title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso() })
 const createError = ref('')
 const copiedMsg = ref('')
+const displayedKey = ref('')
 
 function fmtDate(iso: string) {
   if (!iso) return ''
@@ -161,17 +179,39 @@ async function createClass() {
   } finally { creating.value = false }
 }
 
-async function exportGrades(classId: string) {
-  window.open(`/api/v1/classes/${classId}/grades/export`, '_blank')
+function statusLabel(s: string) {
+  return s === 'active' ? 'Đang mở' : s === 'draft' ? 'Chưa mở' : s === 'archived' ? 'Lưu trữ' : s
 }
 
-async function copyKey(cls: any) {
+async function toggleStatus(cls: any, newStatus: string) {
   try {
-    const { data } = await api.get(`/classes/${cls.id}`)
-    await navigator.clipboard.writeText(data.enrollment_key_display || cls.id)
-    copiedMsg.value = 'Đã sao chép!'
+    await api.patch(`/classes/${cls.id}`, { status: newStatus })
+    cls.status = newStatus
+    copiedMsg.value = newStatus === 'active' ? 'Lớp đã kích hoạt — học viên có thể tham gia!' : 'Lớp đã đóng tạm.'
+    setTimeout(() => (copiedMsg.value = ''), 3000)
+  } catch {}
+}
+
+async function regenerateKey(cls: any) {
+  try {
+    const { data } = await api.post(`/classes/${cls.id}/regenerate-key`)
+    displayedKey.value = data.enrollment_key
+  } catch {
+    copiedMsg.value = 'Không lấy được mã lớp'
+    setTimeout(() => (copiedMsg.value = ''), 2000)
+  }
+}
+
+async function doCopyKey() {
+  try {
+    await navigator.clipboard.writeText(displayedKey.value)
+    copiedMsg.value = 'Đã sao chép mã lớp!'
     setTimeout(() => (copiedMsg.value = ''), 2000)
   } catch {}
+}
+
+async function exportGrades(classId: string) {
+  window.open(`/api/v1/classes/${classId}/grades/export`, '_blank')
 }
 
 onMounted(load)
@@ -188,7 +228,18 @@ h1 { color: var(--amber-800); margin-bottom: 1rem; }
 .loading, .empty { padding: 2rem; color: var(--color-text-muted); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1rem; }
 .class-card { background: #fff; border: 1.5px solid var(--amber-200); border-radius: 10px; padding: 1.1rem; box-shadow: 0 1px 4px var(--color-card-shadow); }
-.cls-title { font-weight: 700; font-size: 1rem; color: var(--amber-900); margin-bottom: 0.3rem; }
+.cls-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.status-badge { font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 10px; }
+.status-badge.active { background: #D1FAE5; color: #065F46; }
+.status-badge.draft { background: #FEF3C7; color: #92400E; }
+.status-badge.archived { background: #F3F4F6; color: #6B7280; }
+.btn-sm.activate { background: #D1FAE5; color: #065F46; border-color: #6EE7B7; }
+.btn-sm.activate:hover { background: #A7F3D0; }
+.btn-sm.close-btn { background: #FEE2E2; color: #991B1B; border-color: #FCA5A5; }
+.btn-sm.close-btn:hover { background: #FECACA; }
+.key-modal { text-align: center; }
+.key-note { font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 1rem; }
+.key-display { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.2em; color: var(--amber-800); background: var(--amber-50); padding: 1rem; border-radius: 8px; border: 2px dashed var(--amber-300); margin-bottom: 1.25rem; font-family: monospace; }
 .cls-dates { font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 0.5rem; }
 .cls-meta { font-size: 0.85rem; margin-bottom: 0.7rem; }
 .cls-meta a { color: var(--amber-700); text-decoration: none; font-weight: 600; }
