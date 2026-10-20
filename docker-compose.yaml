@@ -9,7 +9,7 @@ services:
 
 
   heystat: &base
-    image: heystat/heystat:2.7.6
+    image: heystat/heystat:2.7.30
     container_name: heystat
     profiles: [main]
     build:
@@ -28,6 +28,10 @@ services:
 
         # block Rj - don't enable unless you understand the risks!
         JAMOVI_ALLOW_ARBITRARY_CODE: 'false'
+
+        # classroom boxes must only see the modules baked into the image;
+        # without this, R also searches the mounted user-modules dir
+        JAMOVI_SUPPRESS_USER_MODULES: '1'
 
         # for security, HeyStat runs across 3 origins
         #
