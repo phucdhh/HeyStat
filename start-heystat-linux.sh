@@ -27,6 +27,8 @@ mkdir -p Documents jamovi-modules
 COLLAB_SECRET=$(sed -n 's/^JAMOVI_COLLAB_SECRET=//p' "$WORKDIR/classroom/api/.env" 2>/dev/null | head -1)
 
 # Khởi động container
+# Mấy file server dưới đây là bản vá của fork; bind-mount để image mới nhất chạy
+# mã mới mà không phải build lại toàn bộ image (rất nặng trên LXC 4GB).
 docker rm -f heystat 2>/dev/null || true
 docker run -d \
   --name heystat \
@@ -42,6 +44,8 @@ docker run -d \
   -v "$WORKDIR/Documents":/root/Documents \
   -v "$WORKDIR/jamovi-modules":/root/.jamovi/modules \
   -v "$WORKDIR/server/jamovi/server/public_roots.py":/usr/lib/jamovi/server/jamovi/server/public_roots.py:ro \
+  -v "$WORKDIR/server/jamovi/server/i18n.py":/usr/lib/jamovi/server/jamovi/server/i18n.py:ro \
+  -v "$WORKDIR/server/jamovi/server/session.py":/usr/lib/jamovi/server/jamovi/server/session.py:ro \
   heystat/heystat:2.7.30 \
   "/usr/bin/python3 -u -m jamovi.server 42337 --if=*"
 
