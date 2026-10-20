@@ -169,9 +169,9 @@ async def save_snapshot(
     """Đồng bộ kết quả: the browser captures jamovi's current state and stores it
     as a draft submission, returning the output tables to pick evidence from.
 
-    ``report`` is the HTML jamovi rendered in the student's browser: a file saved
-    by the server contains analysis results as RDS blobs and no readable report,
-    so the tables only exist once the browser hands them over.
+    ``report`` is the HTML jamovi rendered in the student's browser. The tables are
+    read from the saved file itself; the report only stands in for a document whose
+    analyses had not run yet, and nothing in it is stored or shown to a teacher.
     """
     from routers.submissions import _create_submission
 

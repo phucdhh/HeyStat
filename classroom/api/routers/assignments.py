@@ -235,9 +235,17 @@ async def update_assignment(
     updates = body.model_dump(exclude_unset=True)
     if "description" in updates:
         updates["description"] = sanitize_md(updates["description"])
+    # the marks students saw must follow the rules they were graded against
+    criteria_changed = any(
+        field in updates and updates[field] != getattr(a, field)
+        for field in ("grading_config", "answer_key", "max_score")
+    )
     for field, val in updates.items():
         setattr(a, field, val)
     a.updated_at = datetime.now(tz=timezone.utc)
+    if criteria_changed:
+        from routers.submissions import regrade_assignment
+        await regrade_assignment(db, a)
     return _to_response(a, with_key=True)
 
 

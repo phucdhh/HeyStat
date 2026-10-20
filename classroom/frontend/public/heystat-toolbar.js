@@ -42,9 +42,9 @@
     return t.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'analysis';
   }
 
-  /** The results jamovi rendered in this browser: a .omv saved by the server holds
-   *  RDS blobs and no report, so the LMS can only grade the tables found here. Each
-   *  box is one analysis, named by its first heading. */
+  /** The results jamovi rendered in this browser. The submitted .omv already carries
+   *  its own analysis results, so this is only a fallback for analyses the server had
+   *  not run yet at save time. Each box is one analysis, named by its first heading. */
   function collectReport() {
     const chunks = [];
     document.querySelectorAll('div.jmv-results-container').forEach(function (box) {

@@ -1,17 +1,23 @@
 """Read the results of a jamovi ``.omv`` document.
 
-An ``.omv`` is a ZIP archive whose ``index.html`` member holds every analysis the
-user ran, already rendered as APA-style tables.  Reading the rendered document
-means the LMS can grade analysis output without touching the jamovi client.
+An ``.omv`` is a ZIP archive.  Every ``NNN <name>/analysis`` member holds one
+``AnalysisResponse`` protobuf, and inside it the tables, cells and notes jamovi
+just computed — so the LMS can read a submission's numbers out of the file the
+student saved, without a browser and without R.  The rendered ``index.html`` (if
+the client handed one over) is only used as a fallback for documents whose
+analysis results were never stored.
 """
 from __future__ import annotations
 
+import html as _html
 import io
 import posixpath
 import re
 import zipfile
 from html.parser import HTMLParser
 from typing import Any, Optional, Union
+
+from services import omv_proto
 
 PathLike = Union[str, "posixpath.PurePath", bytes, io.IOBase]
 
@@ -141,14 +147,7 @@ class _CellParser(HTMLParser):
         })
 
 
-def parse_omv(source: PathLike, html: Optional[str] = None) -> dict[str, Any]:
-    """Parse an ``.omv`` (path or bytes) into analyses, tables and notes.
-
-    ``html`` overrides the archive's rendered report.  A ``.omv`` saved by the
-    jamovi *server* keeps its analysis results as RDS blobs and carries no
-    ``index.html`` at all — only the desktop app embeds one — so the browser has
-    to hand over the report it rendered for the tables to be readable.
-    """
+def _read_archive(source: PathLike) -> dict[str, Any]:
     if isinstance(source, (bytes, bytearray)):
         archive = zipfile.ZipFile(io.BytesIO(bytes(source)))
     elif hasattr(source, "read"):
@@ -157,48 +156,163 @@ def parse_omv(source: PathLike, html: Optional[str] = None) -> dict[str, Any]:
         archive = zipfile.ZipFile(str(source))
 
     with archive:
-        if html is None:
-            html = (
-                archive.read("index.html").decode("utf-8", "replace")
-                if "index.html" in archive.namelist() else ""
-            )
-        entries = [n for n in archive.namelist() if n.endswith("/analysis")]
-        resources = [n for n in archive.namelist() if "/resources/" in n]
+        names = archive.namelist()
+        members = {n: archive.read(n) for n in names
+                   if n == "index.html" or n.endswith("/analysis")}
+        resources = [n for n in names if "/resources/" in n]
+    return {"names": names, "members": members, "resources": resources}
+
+
+def _decode_analyses(members: dict[str, bytes]) -> list[dict]:
+    out: list[dict] = []
+    for name in sorted(members, key=_entry_index):
+        if not name.endswith("/analysis"):
+            continue
+        decoded = omv_proto.decode_analysis(members[name])
+        if decoded is not None:
+            dir_module = name.split("/", 1)[0].split(" ", 1)[-1]
+            decoded["dir"] = dir_module
+            out.append(decoded)
+    return out
+
+
+def _column_cells(column: dict, notes: dict[str, int]) -> tuple[list, list[str]]:
+    """The raw values of a column and how jamovi would print each one."""
+    values = [None if cell["missing"] else cell["value"] for cell in column["cells"]]
+    fmt = omv_proto.determ_format(values, column["type"], column["format"])
+    texts: list[str] = []
+    for cell, value in zip(column["cells"], values):
+        if cell["missing"]:
+            text = ""
+        else:
+            text = omv_proto.format_number(value, fmt)
+        for mark in cell["footnotes"]:
+            index = notes.get(mark)
+            if index is not None:
+                text += "^{{{}}}".format(index)
+        texts.append(text)
+    return values, texts
+
+
+def _table_from(item: dict, analysis: str) -> dict:
+    raw = item["table"]
+    notes = {note["key"]: i + 1 for i, note in enumerate(raw["notes"])}
+    columns = [c for c in raw["columns"] if omv_proto.is_visible(c)]
+    cells = [_column_cells(c, notes) for c in columns]
+    height = max((len(values) for values, _ in cells), default=0)
+    rows = [[texts[r] if r < len(texts) else "" for _, texts in cells] for r in range(height)]
+    numbers = [[values[r] if r < len(values) else None for values, _ in cells] for r in range(height)]
+    return {
+        "analysis": analysis,
+        "title": item["title"],
+        "path": list(item["path"]),
+        "columns": [c["title"] for c in columns],
+        "column_names": [c["name"] for c in columns],
+        "rows": rows,
+        "values": numbers,
+        "notes": [note["note"] for note in raw["notes"]],
+    }
+
+
+def tables_from_results(analyses: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Turn decoded analyses into the ``tables``/``analyses`` shape of a document.
+
+    An analysis is stored under its module key (``ttestOneS``) and titled by the
+    root of its output tree (``One Sample T-Test``), which is what a teacher sees
+    on screen and types into a grading rule.
+    """
+    tables: list[dict] = []
+    out: list[dict] = []
+    for analysis in analyses:
+        items = list(omv_proto.walk(analysis["results"]))
+        title = items[0]["path"][0] if items and items[0]["path"] else (
+            analysis.get("title") or analysis.get("name") or "")
+        found: list[dict] = []
+        for item in items:
+            if item["kind"] != "table":
+                continue
+            table = _table_from(item, title)
+            if not table["rows"] or not table["columns"]:
+                continue
+            table["module"] = analysis["name"]
+            tables.append(table)
+            found.append(table)
+        images = [i["image"] for i in items if i["kind"] == "image"]
+        notices = [i["notice"] for i in items if i["kind"] == "notice"]
+        if not found and not images and not notices:
+            continue
+        out.append({"name": title, "module": analysis["name"],
+                    "ns": analysis["ns"], "tables": found,
+                    "images": images, "notices": notices})
+    return tables, out
+
+
+def parse_omv(source: PathLike, html: Optional[str] = None) -> dict[str, Any]:
+    """Parse an ``.omv`` (path or bytes) into analyses, tables and notes.
+
+    Results stored in the archive itself win: they are the numbers jamovi
+    computed, not text that has been through a browser.  ``html`` (the report the
+    client rendered) is only read when the document carries no results, which is
+    the case for a ``.omv`` saved before any analysis ran.
+    """
+    archive = _read_archive(source)
+    members = archive["members"]
+    resources = archive["resources"]
+
+    decoded = _decode_analyses(members)
+    file_tables, file_analyses = tables_from_results(decoded)
 
     modules: list[str] = []
-    for name in sorted(entries, key=lambda n: _entry_index(n)):
+    for name in sorted((n for n in archive["names"] if n.endswith("/analysis")),
+                       key=_entry_index):
         module = name.split("/", 1)[0].split(" ", 1)[-1]
         if module not in _EMPTY_MODULES:
             modules.append(module)
 
-    parser = _CellParser()
-    parser.feed(html)
-
-    analyses: list[dict] = []
-    for table in parser.tables:
-        name = table["analysis"]
-        if analyses and analyses[-1]["name"] == name:
-            analyses[-1]["tables"].append(table)
-        else:
-            analyses.append({"name": name, "tables": [table]})
-
-    # jamovi names an analysis in the UI ("Linear Regression") but keys it in the
-    # archive ("linReg").  The two lists line up when every analysis rendered at
-    # least one table, which is the only case a teacher can grade anyway.
-    names = list(dict.fromkeys(t["analysis"] for t in parser.tables if t["analysis"]))
-    module_by_name = dict(zip(names, modules)) if len(names) == len(modules) else {}
-    for entry in analyses:
-        entry["module"] = module_by_name.get(entry["name"])
+    if file_analyses:
+        tables: list[dict] = file_tables
+        analyses: list[dict] = file_analyses
+        notes = [note for t in file_tables for note in t["notes"]]
+        images = [image["path"] for a in file_analyses for image in a["images"]]
+        titles = [a["name"] for a in file_analyses]
+        aliases = {a["name"]: a["module"] for a in file_analyses}
+        source_kind = "results"
+    else:
+        if html is None:
+            html = members.get("index.html", b"").decode("utf-8", "replace")
+        parser = _CellParser()
+        parser.feed(html or "")
+        tables = parser.tables
+        notes = parser.paragraphs
+        images = parser.images
+        titles = parser.headings
+        analyses = []
+        for table in tables:
+            name = table["analysis"]
+            if analyses and analyses[-1]["name"] == name:
+                analyses[-1]["tables"].append(table)
+            else:
+                analyses.append({"name": name, "module": None, "tables": [table]})
+        # jamovi names an analysis in the UI ("Linear Regression") but keys it in the
+        # archive ("linReg").  The two lists line up when every analysis rendered at
+        # least one table, which is the only case a teacher can grade anyway.
+        names = list(dict.fromkeys(t["analysis"] for t in tables if t["analysis"]))
+        module_by_name = dict(zip(names, modules)) if len(names) == len(modules) else {}
+        for entry in analyses:
+            entry["module"] = module_by_name.get(entry["name"])
+        aliases = dict(module_by_name)
+        source_kind = "html"
 
     return {
+        "source": source_kind,
         "modules": modules,
         "analyses": analyses,
-        "tables": parser.tables,
-        "notes": parser.paragraphs,
-        "images": parser.images,
+        "tables": tables,
+        "notes": notes,
+        "images": images,
         "resources": resources,
-        "titles": parser.headings,
-        "module_by_analysis": module_by_name,
+        "titles": titles,
+        "module_by_analysis": aliases,
     }
 
 
@@ -222,14 +336,35 @@ def _score_name(haystack: str, needle: str, aliases: dict[str, str]) -> int:
     return -1
 
 
-def find_stat(
+def _table_names(table: dict) -> list[str]:
+    """Everything a table can be recognised by: its caption and its group path."""
+    names = [table.get("title") or ""]
+    names.extend(p for p in table.get("path") or [] if p)
+    return names
+
+
+def _matches_table(table: dict, needle: str) -> int:
+    best = -1
+    for name in _table_names(table):
+        score = _score_name(name, needle, {})
+        if score > best:
+            best = score
+    return best
+
+
+def lookup_stat(
     doc: dict[str, Any],
     analysis: Optional[str] = None,
     table: Optional[str] = None,
     column: Optional[str] = None,
     row: Optional[str] = None,
-) -> Optional[float]:
-    """Pull one numeric value out of a parsed document.
+) -> tuple[Optional[float], str]:
+    """Find one numeric value, and say why it could not be found.
+
+    Returns ``(value, "")`` on success, or ``(None, reason)`` where reason is one
+    of ``analysis``, ``table``, ``column``, ``row`` or ``value`` — a teacher
+    reading "the table has no such column" knows the answer key is wrong, while
+    "no such analysis" tells the student they never ran it.
 
     ``analysis``/``table``/``column``/``row`` are matched case-insensitively as
     substrings so a teacher can write ``table="Model Fit"`` without knowing the
@@ -241,21 +376,35 @@ def find_stat(
     one silently gives the student a wrong mark.
     """
     aliases = {normalise(k): normalise(v) for k, v in (doc.get("module_by_analysis") or {}).items()}
+    tables = doc.get("tables") or []
     scored = []
-    for order, t in enumerate(doc["tables"]):
+    for order, t in enumerate(tables):
         score = 0
         if analysis:
-            score += _score_name(t["analysis"], analysis, aliases)
-            if score < 0:
+            analysis_score = max(
+                _score_name(t.get("analysis") or "", analysis, aliases),
+                _score_name(t.get("module") or "", analysis, {}),
+            )
+            if analysis_score < 0:
                 continue
+            score += analysis_score
         if table:
-            title = _score_name(t["title"], table, {})
-            if title < 0:
+            table_score = _matches_table(t, table)
+            if table_score < 0:
                 continue
-            score += title
+            score += table_score
         scored.append((score, order, t))
     scored.sort(key=lambda item: (-item[0], item[1]))
 
+    if not scored:
+        if analysis and not any(_score_name(t.get("analysis") or "", analysis, aliases) >= 0
+                                or _score_name(t.get("module") or "", analysis, {}) >= 0
+                                for t in tables):
+            return None, "analysis"
+        return None, "table"
+
+    saw_column = False
+    saw_row = False
     for _, _, t in scored:
         if column:
             idx = _column_index(t["columns"], column)
@@ -263,28 +412,51 @@ def find_stat(
                 continue
         else:
             idx = 0
+        saw_column = True
         rows = t["rows"]
         if not rows:
             continue
         if row in (None, ""):
-            target = rows[0]
+            position = 0
         elif row == "*":
-            target = rows[-1]
+            position = len(rows) - 1
         else:
-            target = next((r for r in rows if _contains(" ".join(r), row)), None)
-            if target is None:
+            position = next((i for i, cells in enumerate(rows)
+                             if _contains(" ".join(cells), row)), None)
+            if position is None:
                 continue
-        if idx < len(target):
-            value = parse_number(target[idx])
+        saw_row = True
+        values = t.get("values") or []
+        if position < len(values) and idx < len(values[position]):
+            raw = values[position][idx]
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                return float(raw), ""
+        if idx < len(rows[position]):
+            value = parse_number(rows[position][idx])
             if value is not None:
-                return value
-    return None
+                return value, ""
+
+    if not saw_column:
+        return None, "column"
+    if not saw_row:
+        return None, "row"
+    return None, "value"
+
+
+def find_table(doc: dict[str, Any], table: str) -> Optional[dict]:
+    """The table a grading rule points at, best match first, or None."""
+    scored = [(_matches_table(t, table), i, t) for i, t in enumerate(doc.get("tables") or [])]
+    scored = [s for s in scored if s[0] >= 0]
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return scored[0][2]
 
 
 def find_row(doc: dict[str, Any], table: str, row: str) -> Optional[dict[str, str]]:
     """Return one data row of a table as ``{column: cell}``, or None."""
     for t in doc["tables"]:
-        if not _contains(t["title"], table):
+        if _matches_table(t, table) < 0:
             continue
         for cells in t["rows"]:
             if _contains(" ".join(cells), row):

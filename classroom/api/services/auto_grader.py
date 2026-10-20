@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from services.omv_reader import find_stat, find_row, normalise, parse_number
+from services.omv_reader import find_row, find_table, lookup_stat, normalise, parse_number
 
 
 def _compare(actual: float, op: str, value: Any, value2: Any = None, tolerance: float = 0.0) -> bool:
@@ -29,14 +29,29 @@ def _compare(actual: float, op: str, value: Any, value2: Any = None, tolerance: 
     return abs(actual - float(value)) <= tolerance
 
 
-def _explain(check: dict, passed: bool, actual: Any, expected: Any, has_table: bool) -> str:
+def _explain(check: dict, passed: bool, actual: Any, expected: Any, reason: str) -> str:
     if passed:
         return check.get("explain_ok") or ""
     if check.get("explain"):
         return check["explain"]
-    if not has_table:
-        return (f"Không tìm thấy bảng “{check.get('table') or check.get('analysis') or ''}” "
-                "trong kết quả — có thể bạn chưa chạy phân tích này.")
+    table = check.get("table") or ""
+    column = check.get("column") or ""
+    row = check.get("row") or ""
+    where = f"bảng “{table}”" if table else f"phân tích “{check.get('analysis') or ''}”"
+    if reason == "analysis":
+        return (f"Không thấy phân tích “{check.get('analysis') or table}” trong bài — "
+                "có thể bạn chưa chạy phân tích này trên jamovi.")
+    if reason == "table":
+        return f"Không tìm thấy {where} trong kết quả — có thể bạn chưa chạy hoặc đã ẩn phân tích này."
+    if reason == "column":
+        return (f"{where} trong bài không có cột “{column}” — "
+                f"có thể bạn chưa tích chọn thống kê “{column}” trong jamovi.")
+    if reason == "row":
+        return f"{where} không có dòng “{row}” — kiểm tra lại biến hoặc nhóm bạn đã chọn."
+    if reason == "value":
+        return f"Ô “{column}” ở {where} đang trống — bạn chưa có giá trị cho tiêu chí này."
+    if reason:
+        return f"Không đọc được giá trị trong {where}."
     return f"Giá trị trong bài là {actual}, yêu cầu {expected}."
 
 
@@ -47,12 +62,12 @@ def _grade_checks(grading_config: dict, doc: Optional[dict]) -> list[dict]:
         op = check.get("op", "present")
         passed: Optional[bool]
         actual: Any = None
-        has_table = True
+        reason = ""
 
         if doc is None:
             items.append({"id": check.get("id"), "kind": "check", "label": check.get("label", op),
                           "passed": None, "awarded": 0.0, "points": points,
-                          "expected": check.get("value"), "actual": None,
+                          "expected": check.get("value"), "actual": None, "reason": "no file",
                           "explanation": "Chưa có file .omv nộp lên nên không kiểm tra được."})
             continue
 
@@ -63,34 +78,35 @@ def _grade_checks(grading_config: dict, doc: Optional[dict]) -> list[dict]:
                 for t in doc["tables"]
             ) or any(normalise(m) == wanted for m in doc["modules"])
             actual = "có" if passed else "không"
-            has_table = bool(passed)
+            reason = "" if passed else "analysis"
             expected = f"chạy {check.get('analysis')}"
         elif op == "present":
             if check.get("row"):
                 row = find_row(doc, check.get("table", ""), check["row"])
                 passed = row is not None
                 actual = row
+                reason = "" if passed else (
+                    "row" if find_table(doc, check.get("table", "")) else "table")
             else:
-                passed = any(
-                    normalise(check.get("table", "")) in normalise(t["title"])
-                    for t in doc["tables"]
-                )
-                actual = "có" if passed else "không"
-            has_table = bool(passed)
+                found = find_table(doc, check.get("table", "")) is not None
+                passed = found
+                actual = "có" if found else "không"
+                reason = "" if found else "table"
             expected = f"bảng {check.get('table')}"
         else:
-            actual = find_stat(
+            actual, reason = lookup_stat(
                 doc,
                 analysis=check.get("analysis"),
                 table=check.get("table"),
                 column=check.get("column"),
                 row=check.get("row"),
             )
-            has_table = actual is not None
             passed = None if actual is None else _compare(
                 actual, op, check.get("value"), check.get("value2"),
                 float(check.get("tolerance", 0.0)),
             )
+            if passed:
+                reason = ""
             expected = {
                 "gte": f"≥ {check.get('value')}", ">=": f"≥ {check.get('value')}",
                 "lte": f"≤ {check.get('value')}", "<=": f"≤ {check.get('value')}",
@@ -108,7 +124,8 @@ def _grade_checks(grading_config: dict, doc: Optional[dict]) -> list[dict]:
             "points": points,
             "expected": expected,
             "actual": actual,
-            "explanation": _explain(check, bool(passed), actual, expected, has_table),
+            "reason": reason,
+            "explanation": _explain(check, bool(passed), actual, expected, reason),
         })
     return items
 

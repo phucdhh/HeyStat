@@ -139,7 +139,7 @@ class Session(dict):
 
     def set_language(self, lang):
         if i18n.get_language() is None:  # if the language has already been set from conf then leave it alone
-            i18n.set_language(lang)
+            i18n.set_language(i18n.best_language(lang))
 
     def get_language(self):
         return i18n.get_language()

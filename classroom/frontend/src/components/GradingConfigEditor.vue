@@ -2,13 +2,21 @@
   <section class="grading">
     <div class="head">
       <h3>Tiêu chí chấm tự động</h3>
-      <button class="btn-sm" :disabled="saving" @click="save">
-        {{ saving ? 'Đang lưu…' : 'Lưu tiêu chí' }}
-      </button>
+      <div class="row">
+        <button class="btn-sm" :disabled="regrading" @click="regrade">
+          {{ regrading ? 'Đang chấm lại…' : 'Chấm lại bài đã nộp' }}
+        </button>
+        <button class="btn-sm" :disabled="saving" @click="save">
+          {{ saving ? 'Đang lưu…' : 'Lưu tiêu chí' }}
+        </button>
+      </div>
     </div>
     <p class="hint">
       Học viên chỉ thấy câu hỏi, không thấy đáp án. Nếu bạn không cấu hình gì, bài nộp vẫn chấm tay như trước.
+      Lưu tiêu chí sẽ chấm lại những bài đã nộp; bài bạn đã cho điểm tay được giữ nguyên.
     </p>
+    <p v-if="regradeResult" class="saved">{{ regradeResult }}</p>
+    <p v-if="regradeError" class="error">{{ regradeError }}</p>
 
     <h4>Phần 1 – Câu hỏi trên thanh bên</h4>
     <div v-for="(q, i) in questions" :key="i" class="block">
@@ -112,6 +120,9 @@ const schemaError = ref('')
 const saving = ref(false)
 const saved = ref(false)
 const error = ref('')
+const regrading = ref(false)
+const regradeResult = ref('')
+const regradeError = ref('')
 
 function needsValue(op: string) {
   return !['ran', 'present'].includes(op)
@@ -203,6 +214,23 @@ async function save() {
   } catch (e: any) {
     error.value = e?.response?.data?.detail ?? 'Không lưu được tiêu chí'
   } finally { saving.value = false }
+}
+
+/** Re-grade without touching the criteria: rebuilds the evidence tables from each
+ *  submitted .omv, which is what submissions saved before the file could be read need. */
+async function regrade() {
+  regrading.value = true
+  regradeResult.value = ''
+  regradeError.value = ''
+  try {
+    const { data } = await api.post(`/assignments/${props.assignmentId}/submissions/regrade`)
+    const parts = [`Đã chấm lại ${data.regraded} bài`]
+    if (data.manual) parts.push(`giữ ${data.manual} bài bạn chấm tay`)
+    if (data.unreadable) parts.push(`${data.unreadable} bài không đọc được file`)
+    regradeResult.value = parts.join(', ') + '.'
+  } catch (e: any) {
+    regradeError.value = e?.response?.data?.detail ?? 'Không chấm lại được'
+  } finally { regrading.value = false }
 }
 </script>
 

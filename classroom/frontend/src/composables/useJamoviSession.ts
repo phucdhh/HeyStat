@@ -103,11 +103,11 @@ export function useJamoviSession() {
 
   /** Collect the tables jamovi rendered in the student's browser.
    *
-   * A .omv written by the jamovi server keeps its results as RDS blobs and carries
-   * no report at all, so the APA tables the grader reads only exist in these
-   * same-origin /results/{instance}/{n}/ iframes. Each box is one analysis: its first
-   * heading names the analysis, and the rest are sub-group titles that must not be
-   * mistaken for one (jamovi reuses <h1> for those). */
+   * The submitted .omv is what the grader reads — it carries the analysis results as
+   * protobuf, so these iframes are only a fallback for analyses the server had not
+   * run yet at save time. Each box is one analysis: its first heading names the
+   * analysis, and the rest are sub-group titles that must not be mistaken for one
+   * (jamovi reuses <h1> for those). */
   function captureReport(): string {
     const outer = frameEl.value?.contentDocument
     if (!outer) return ''

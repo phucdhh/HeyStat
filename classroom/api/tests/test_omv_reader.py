@@ -3,7 +3,13 @@ import zipfile
 
 import pytest
 
-from services.omv_reader import find_stat, parse_number, parse_omv
+from services.omv_reader import lookup_stat, parse_number, parse_omv
+
+
+def find_stat(doc, **kwargs):
+    """The value a grading rule points at, or None when the rule cannot be read."""
+    return lookup_stat(doc, **kwargs)[0]
+
 
 _INDEX_HTML = """
 <html><body>
@@ -184,11 +190,11 @@ _LIVE_RESULTS_HTML = """
 """
 
 
-def test_the_browser_report_makes_a_server_saved_omv_gradeable():
-    """A .omv written by the jamovi *server* holds its results as RDS blobs and
-    carries no index.html, so the APA tables only exist in the browser. The client
-    hands that markup over and it titles tables with <caption>, not a full-width
-    <th scope="colgroup"> like an exported report does.
+def test_the_browser_report_makes_an_empty_omv_gradeable():
+    """A .omv saved before any analysis ran carries no results, only the report the
+    browser rendered. That markup titles tables with <caption> rather than the
+    full-width <th scope="colgroup"> an exported report uses, and it is the fallback
+    the file-based reader drops to when the archive holds nothing.
     """
     doc = parse_omv(make_omv("<html><body>nothing rendered here</body></html>"), html=_LIVE_RESULTS_HTML)
     fit = doc["tables"][0]

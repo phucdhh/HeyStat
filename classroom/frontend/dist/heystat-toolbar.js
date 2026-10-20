@@ -42,8 +42,9 @@
     return t.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'analysis';
   }
 
-  /** The results jamovi rendered in this browser: the server writes no report into
-   *  a saved .omv, so the LMS can only grade the tables it finds in these iframes. */
+  /** The results jamovi rendered in this browser. The submitted .omv already carries
+   *  its own analysis results, so this is only a fallback for analyses the server had
+   *  not run yet at save time. Each box is one analysis, named by its first heading. */
   function collectReport() {
     const chunks = [];
     document.querySelectorAll('div.jmv-results-container').forEach(function (box) {
@@ -52,10 +53,12 @@
       const doc = frame && frame.contentDocument;
       if (!doc) return;
       let body = '';
-      doc.querySelectorAll('h1, table').forEach(function (el) { body += el.outerHTML; });
-      if (!body) return;
-      const heading = doc.querySelector('h1') ? '' : '<h1>' + escapeHtml(box.getAttribute('data-analysis-name') || '') + '</h1>';
-      chunks.push(heading + body);
+      const cells = doc.querySelectorAll('table');
+      if (!cells.length) return;
+      cells.forEach(function (el) { body += el.outerHTML; });
+      const h1 = doc.querySelector('h1');
+      const name = ((h1 && h1.textContent) || box.getAttribute('data-analysis-name') || '').trim();
+      chunks.push('<h1>' + escapeHtml(name) + '</h1>' + body);
     });
     return chunks.join('');
   }

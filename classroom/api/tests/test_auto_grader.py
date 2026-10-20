@@ -45,7 +45,35 @@ def test_checks_can_require_an_analysis_or_a_table():
     assert by_id["ran"]["passed"] is True
     assert by_id["coef"]["passed"] is True
     assert by_id["missing_table"]["passed"] is False
-    assert "chưa chạy phân tích" in by_id["missing_table"]["explanation"]
+    assert by_id["missing_table"]["reason"] == "table"
+    assert "Không tìm thấy bảng “Post Hoc”" in by_id["missing_table"]["explanation"]
+
+
+def test_a_check_reads_the_number_stored_in_the_submitted_file():
+    """Grading a submission is not a screenshot comparison: the .omv carries the
+    statistics themselves, so a tolerance check sees 7.325754, not "7.33"."""
+    from tests.test_omv_proto import doc_of, ttest_entry
+
+    doc = doc_of(ttest_entry())
+    config = {"checks": [
+        {"id": "t", "label": "Giá trị t", "op": "between", "analysis": "ttestOneS",
+         "table": "One Sample T-Test", "column": "Statistic", "value": 7.3, "value2": 7.4,
+         "points": 2},
+        {"id": "sig", "label": "p có ý nghĩa", "op": "lt", "table": "One Sample T-Test",
+         "column": "p", "value": 0.05, "points": 1},
+        # the student unticked the box, so the column is not in their output
+        {"id": "ci", "label": "Khoảng tin cậy", "op": "present", "table": "One Sample T-Test",
+         "row": "Unticked", "points": 1},
+    ]}
+    result = auto_grade(assignment(grading_config=config), doc, None)
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id["t"]["passed"] is True
+    assert by_id["t"]["actual"] == 7.325754
+    assert by_id["sig"]["passed"] is True
+    assert by_id["ci"]["passed"] is False
+    assert by_id["ci"]["reason"] == "row"
+    assert "không có dòng “Unticked”" in by_id["ci"]["explanation"]
+    assert result["earned"] == 3.0
 
 
 def test_between_and_tolerance():

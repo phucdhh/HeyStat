@@ -94,8 +94,10 @@ _MAX_REPORT_CHARS = 4_000_000
 def _read_outputs(data: bytes, report_html: Optional[str] = None) -> Optional[dict]:
     """Parse an uploaded .omv, or None when it is not a readable jamovi file.
 
-    ``report_html`` is the results the browser rendered: the jamovi server saves
-    no report into the file, so without it a submission has nothing to grade.
+    The results jamovi computed live inside the file itself, so a submission is
+    gradeable from what arrived on disk.  ``report_html`` — the markup the
+    student's browser rendered — is only a fallback for a document saved before
+    any analysis ran, and it is never stored or displayed.
     """
     try:
         return parse_omv(data, html=report_html or None)
@@ -106,7 +108,7 @@ def _read_outputs(data: bytes, report_html: Optional[str] = None) -> Optional[di
 def _table_rows(doc: dict) -> list[dict]:
     return [
         {"index": i, "analysis": t["analysis"], "title": t["title"],
-         "columns": t["columns"], "rows": t["rows"]}
+         "columns": t["columns"], "rows": t["rows"], "notes": t.get("notes") or []}
         for i, t in enumerate(doc["tables"])
     ]
 
@@ -237,6 +239,85 @@ async def _notify(db: AsyncSession, user_id: uuid.UUID, type_: str, title: str,
     await db.flush()
 
 
+def _doc_of_submission(sub: Submission) -> Optional[dict]:
+    """Re-read a stored submission's .omv, or None when it is gone or unreadable."""
+    if not sub.file_path:
+        return None
+    path = Path(settings.upload_dir) / sub.file_path
+    if not path.is_file():
+        return None
+    return _read_outputs(path.read_bytes())
+
+
+def _refresh_snapshot(sub: Submission, doc: dict) -> None:
+    """Rebuild the evidence tables from the file, keeping what the student ticked.
+
+    Older submissions were snapshotted from a browser report that rounded every
+    number, or held nothing at all because the file could not be read then; their
+    unticked evidence is restored by showing every table the file now yields.
+    """
+    old = sub.session_snapshot or {}
+    fresh = _snapshot_payload(doc, None)
+    chosen = {(t.get("analysis"), t.get("title")) for t in old.get("tables", [])}
+    if chosen:
+        fresh["tables"] = [t for t in fresh["tables"] if (t["analysis"], t["title"]) in chosen]
+    sub.session_snapshot = fresh
+
+
+def regrade_submission(assignment: Assignment, sub: Submission, doc: Optional[dict]) -> Optional[dict]:
+    """Update one submission from its parsed file.
+
+    Returns the new grade, or None when the submission must keep what it has:
+    a teacher scored it by hand, the file cannot be read, or the assignment simply
+    has no automatic criteria.
+    """
+    if sub.graded_by is not None or doc is None:
+        return None
+    _refresh_snapshot(sub, doc)
+    grade = auto_grade(assignment, doc, sub.answers)
+    if grade is None:
+        return None
+    sub.score = grade["score"]
+    sub.feedback = grade["feedback"]
+    sub.auto_grade = grade
+    sub.graded_at = datetime.now(tz=timezone.utc)
+    return grade
+
+
+async def regrade_assignment(db: AsyncSession, assignment: Assignment) -> dict:
+    """Re-run automatic grading over an assignment's final submissions.
+
+    Called when the teacher edits the criteria, so a mark follows the rules that
+    were actually in force, and from the admin endpoint to backfill submissions
+    saved before the .omv could be read.
+    """
+    rows = await db.execute(
+        select(Submission).where(
+            Submission.assignment_id == assignment.id,
+            Submission.is_final == True,
+        )
+    )
+    regraded = skipped = unreadable = 0
+    for sub in rows.scalars().all():
+        if sub.graded_by is not None:
+            skipped += 1
+            continue
+        doc = _doc_of_submission(sub)
+        if doc is None:
+            unreadable += 1
+            continue
+        grade = regrade_submission(assignment, sub, doc)
+        if grade is None:
+            continue
+        await _notify(db, sub.student_id, "submission.graded",
+                      f"Kết quả chấm lại bài «{assignment.title}»: "
+                      f"{grade['score']}/{grade['max_score']}",
+                      grade["feedback"],
+                      {"submission_id": str(sub.id), "mistakes": grade["mistake_count"]})
+        regraded += 1
+    return {"regraded": regraded, "manual": skipped, "unreadable": unreadable}
+
+
 @router.post("/assignments/{assignment_id}/submissions", status_code=201, response_model=SubmissionResponse)
 async def submit(
     assignment_id: uuid.UUID,
@@ -347,6 +428,22 @@ async def all_submissions(
         )
         for s, full_name, email in rows
     ]
+
+
+@router.post("/assignments/{assignment_id}/submissions/regrade")
+async def regrade_submissions(
+    assignment_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-grade every submission against the criteria as they stand now."""
+    a = await _get_assignment_or_404(db, assignment_id)
+    cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
+    cls = cls_r.scalar_one_or_none()
+    roles = await _get_user_roles(db, current_user.id)
+    if "admin" not in roles and (not cls or cls.teacher_id != current_user.id):
+        raise HTTPException(403, "Chỉ giáo viên mới chấm lại bài")
+    return await regrade_assignment(db, a)
 
 
 @router.get("/assignments/{assignment_id}/submissions/{submission_id}", response_model=SubmissionResponse)
