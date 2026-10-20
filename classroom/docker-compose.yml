@@ -1,17 +1,19 @@
 version: "3.9"
 
 services:
+  # Credentials come from classroom/.env (a symlink to api/.env on the server).
+  # The defaults below are only for a throwaway local database.
   db:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: classroom
-      POSTGRES_USER: heystat
-      POSTGRES_PASSWORD: heystat
+      POSTGRES_DB: ${DB_NAME:-classroom}
+      POSTGRES_USER: ${DB_USER:-heystat}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-heystat}
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U heystat -d classroom"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-heystat} -d ${DB_NAME:-classroom}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,11 +36,6 @@ services:
         condition: service_started
     env_file:
       - ./api/.env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://heystat:heystat@db:5432/classroom
-      SYNC_DATABASE_URL: postgresql+psycopg2://heystat:heystat@db:5432/classroom
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
     volumes:
       - uploads:/uploads
       - /root/Documents:/root/Documents:ro   # Jamovi data root (read-only for safety)
@@ -57,11 +54,6 @@ services:
       - db
     env_file:
       - ./api/.env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://heystat:heystat@db:5432/classroom
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
       - uploads:/uploads
     command: celery -A tasks.celery_app worker --loglevel=info -Q default
@@ -76,10 +68,6 @@ services:
       - db
     env_file:
       - ./api/.env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://heystat:heystat@db:5432/classroom
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
     volumes:
       - uploads:/uploads
     command: celery -A tasks.celery_app beat --loglevel=info
