@@ -59,3 +59,6 @@ jamovi-modules/
 
 # Backup keo tu LXC ve (PostgreSQL/Redis/uploads/Documents)
 backups/
+
+# Bi mat khau noi bo cua Classroom (giu tren LXC, khong push len GitHub)
+classroom/api/.env
