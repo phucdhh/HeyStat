@@ -93,7 +93,7 @@ async def class_progress(
             final_sub = s_r.scalar_one_or_none()
             if final_sub:
                 status = "graded" if final_sub.score is not None else "submitted"
-                sub_status.append({"assignment_id": str(a.id), "status": status, "score": float(final_sub.score) if final_sub.score else None})
+                sub_status.append({"assignment_id": str(a.id), "status": status, "score": float(final_sub.score) if final_sub.score is not None else None})
             else:
                 sub_status.append({"assignment_id": str(a.id), "status": "not_submitted", "score": None})
         student_rows.append({

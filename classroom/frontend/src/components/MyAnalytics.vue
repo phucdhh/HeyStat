@@ -9,8 +9,8 @@
           <span class="l">bài tập đã nộp</span>
         </div>
         <div class="stat">
-          <span class="v">{{ data.average_score ?? '—' }}</span>
-          <span class="l">điểm trung bình</span>
+          <span class="v">{{ data.skills.length }}</span>
+          <span class="l">kĩ năng đang theo dõi</span>
         </div>
       </div>
 
@@ -33,8 +33,6 @@
         <div v-for="r in data.recent" :key="r.assignment_id + r.submitted_at" class="recent">
           <RouterLink :to="`/classes/${r.class_id}/assignments/${r.assignment_id}`">{{ r.title }}</RouterLink>
           <span class="muted">{{ fmt(r.submitted_at) }}</span>
-          <span v-if="r.score != null" class="score">{{ r.score }}/{{ r.max_score }}</span>
-          <span v-else-if="r.mistake_count != null" class="pending">chưa chấm</span>
         </div>
       </template>
     </template>
@@ -72,7 +70,5 @@ h3 { margin: 1.25rem 0 0.5rem; color: var(--amber-800); font-size: 0.92rem; }
 .fill { height: 100%; background: var(--amber-500); }
 .recent { display: flex; gap: 0.75rem; align-items: baseline; font-size: 0.82rem; padding: 0.3rem 0; border-bottom: 1px solid var(--amber-100); flex-wrap: wrap; }
 .recent a { color: var(--amber-700); text-decoration: none; font-weight: 600; }
-.score { background: var(--amber-100); color: var(--amber-800); padding: 0.05rem 0.45rem; border-radius: 8px; font-weight: 700; }
-.pending { color: #B45309; font-size: 0.75rem; }
 .muted { color: var(--color-text-muted); font-size: 0.8rem; }
 </style>

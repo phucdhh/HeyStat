@@ -50,7 +50,9 @@ class Settings(BaseSettings):
     # Shared with HeyStat container for collab_role token verification (Phase 10)
     jamovi_collab_secret: str = ""
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # extra="ignore": the shared api/.env also carries compose-interpolation keys (DB_NAME, DB_USER,
+    # DB_PASSWORD) that are not settings.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
@@ -74,6 +75,18 @@ class SubmissionResponse(BaseModel):
     outputs: Optional[list] = None
 
     model_config = {"from_attributes": True}
+
+
+def _without_marks(payload: SubmissionResponse) -> SubmissionResponse:
+    """A student sees when they handed in, never the mark or the pass/fail detail.
+
+    The teacher publishes điểm outside the app, so the numbers stay in the teacher
+    and admin views only.
+    """
+    payload.score = None
+    payload.feedback = None
+    payload.auto_grade = None
+    return payload
 
 
 def _parse_json_field(raw: Optional[str], field: str) -> Optional[Any]:
@@ -218,19 +231,14 @@ async def _create_submission(
         await _notify(db, current_user.id, "submission.received",
                       "Đã nhận bài nộp",
                       f"Bài «{a.title}» đã được nộp thành công.")
-        if grade:
-            await _notify(db, current_user.id, "submission.graded",
-                          f"Kết quả chấm tự động: {grade['score']}/{grade['max_score']}",
-                          grade["feedback"],
-                          {"submission_id": str(sub.id), "mistakes": grade["mistake_count"]})
 
-    return SubmissionResponse(
+    return _without_marks(SubmissionResponse(
         id=str(sub.id), assignment_id=str(sub.assignment_id),
         student_id=str(sub.student_id), submitted_at=sub.submitted_at,
         is_final=sub.is_final, score=float(sub.score) if sub.score is not None else None,
         feedback=sub.feedback, file_path=file_path,
         answers=answers, auto_grade=grade, outputs=tables or None,
-    )
+    ))
 
 
 async def _notify(db: AsyncSession, user_id: uuid.UUID, type_: str, title: str,
@@ -306,14 +314,8 @@ async def regrade_assignment(db: AsyncSession, assignment: Assignment) -> dict:
         if doc is None:
             unreadable += 1
             continue
-        grade = regrade_submission(assignment, sub, doc)
-        if grade is None:
+        if regrade_submission(assignment, sub, doc) is None:
             continue
-        await _notify(db, sub.student_id, "submission.graded",
-                      f"Kết quả chấm lại bài «{assignment.title}»: "
-                      f"{grade['score']}/{grade['max_score']}",
-                      grade["feedback"],
-                      {"submission_id": str(sub.id), "mistakes": grade["mistake_count"]})
         regraded += 1
     return {"regraded": regraded, "manual": skipped, "unreadable": unreadable}
 
@@ -362,14 +364,14 @@ async def choose_outputs(
     snapshot["available"] = all_tables
     sub.session_snapshot = snapshot
     await db.flush()
-    return SubmissionResponse(
+    return _without_marks(SubmissionResponse(
         id=str(sub.id), assignment_id=str(sub.assignment_id),
         student_id=str(sub.student_id), submitted_at=sub.submitted_at,
         is_final=sub.is_final, score=float(sub.score) if sub.score is not None else None,
         feedback=sub.feedback, file_path=sub.file_path,
         answers=sub.answers, auto_grade=sub.auto_grade,
         outputs=snapshot["tables"],
-    )
+    ))
 
 
 @router.get("/assignments/{assignment_id}/submissions/my", response_model=list[SubmissionResponse])
@@ -386,13 +388,13 @@ async def my_submissions(
     )
     subs = r.scalars().all()
     return [
-        SubmissionResponse(
+        _without_marks(SubmissionResponse(
             id=str(s.id), assignment_id=str(s.assignment_id),
             student_id=str(s.student_id), submitted_at=s.submitted_at,
             is_final=s.is_final, score=float(s.score) if s.score is not None else None,
             feedback=s.feedback, file_path=s.file_path,
             answers=s.answers, auto_grade=s.auto_grade,
-        )
+        ))
         for s in subs
     ]
 
@@ -468,7 +470,7 @@ async def get_submission(
     is_teacher = "admin" in roles or cls.teacher_id == current_user.id
     if not is_teacher and sub.student_id != current_user.id:
         raise HTTPException(403, "Không có quyền xem bài nộp này")
-    return SubmissionResponse(
+    payload = SubmissionResponse(
         id=str(sub.id), assignment_id=str(sub.assignment_id),
         student_id=str(sub.student_id), submitted_at=sub.submitted_at,
         is_final=sub.is_final, score=float(sub.score) if sub.score is not None else None,
@@ -476,6 +478,38 @@ async def get_submission(
         answers=sub.answers, auto_grade=sub.auto_grade,
         outputs=(sub.session_snapshot or {}).get("tables") or None,
     )
+    return payload if is_teacher else _without_marks(payload)
+
+
+@router.get("/submissions/{submission_id}/download")
+async def download_submission(
+    submission_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hand the .omv a student submitted back to them or to their teacher."""
+    r = await db.execute(select(Submission).where(Submission.id == submission_id))
+    sub = r.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(404, "Bài nộp không tồn tại")
+    a = await _get_assignment_or_404(db, sub.assignment_id)
+    cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
+    cls = cls_r.scalar_one()
+    roles = await _get_user_roles(db, current_user.id)
+    is_teacher = "admin" in roles or cls.teacher_id == current_user.id
+    if not is_teacher and sub.student_id != current_user.id:
+        raise HTTPException(403, "Không có quyền tải bài nộp này")
+    if not sub.file_path:
+        raise HTTPException(404, "Bài nộp không kèm file")
+    path = Path(settings.upload_dir) / sub.file_path
+    if not path.is_file():
+        raise HTTPException(404, "File không tồn tại trên server")
+
+    # Stored under a random uuid, so name it after the student for whoever downloads it
+    ur = await db.execute(select(User.full_name).where(User.id == sub.student_id))
+    student = ur.scalar_one_or_none() or str(sub.student_id)[:8]
+    filename = f"{a.title} - {student}{path.suffix}"
+    return FileResponse(str(path), filename=filename, media_type="application/octet-stream")
 
 
 @router.post("/assignments/{assignment_id}/submissions/{submission_id}/grade")
@@ -504,7 +538,7 @@ async def grade_submission(
     await _notify(
         db, sub.student_id, "submission.graded",
         f"Giáo viên đã chấm bài «{a.title}»",
-        f"Điểm: {body.score}. {body.feedback or ''}".strip(),
+        "Kết quả do giáo viên công bố.",
         {"submission_id": str(sub.id)},
     )
     return {"detail": "Chấm điểm thành công", "score": body.score}

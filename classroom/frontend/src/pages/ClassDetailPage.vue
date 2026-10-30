@@ -8,6 +8,7 @@
         <div>
           <h1>{{ cls.title }}</h1>
           <p class="sub" v-if="cls.description">{{ cls.description }}</p>
+          <p class="sub" v-if="cls.teacher_name && cls.teacher_id !== auth.user?.id">👤 Giáo viên: {{ cls.teacher_name }}</p>
         </div>
       </div>
 
@@ -26,6 +27,9 @@
         <div v-for="a in assignments" :key="a.id" class="list-item">
           <RouterLink :to="`/classes/${classId}/assignments/${a.id}`" class="item-title">{{ a.title }}</RouterLink>
           <span class="meta">Hạn nộp: {{ a.deadline ? fmtDate(a.deadline) : 'Không có' }}</span>
+          <span class="kind-tag">{{ kindLabel(a) }}</span>
+          <span v-if="a.answer_key?.questions?.length || a.grading_config?.checks?.length" class="chip auto">chấm tự động</span>
+          <span v-if="a.file_id" class="meta">📊 có bộ dữ liệu</span>
           <span class="score-tag">{{ a.max_score }} điểm</span>
           <button v-if="auth.isTeacher" class="btn-icon" @click="openEditAssignment(a)" title="Sửa">✏️</button>
         </div>
@@ -34,12 +38,21 @@
       <!-- ── Lessons tab ───────────────────────────────── -->
       <div v-if="activeTab === 'lessons'">
         <div class="tab-toolbar" v-if="auth.isTeacher">
-          <button class="btn-primary" @click="showCreateLesson = true">+ Tạo bài học</button>
+          <button class="btn-primary" @click="openCreateLesson">+ Tạo bài học</button>
         </div>
         <div v-if="!lessons.length" class="empty">Chưa có bài học.</div>
-        <div v-for="l in lessons" :key="l.id" class="list-item">
+        <div v-for="(l, i) in lessons" :key="l.id" class="list-item">
+          <span class="kind-tag">{{ typeOf(l.lesson_type).icon }} {{ typeOf(l.lesson_type).label }}</span>
           <RouterLink :to="`/classes/${classId}/lessons/${l.id}`" class="item-title">{{ l.title }}</RouterLink>
-          <button v-if="auth.isTeacher" class="btn-icon" @click="openEditLesson(l)" title="Sửa">✏️</button>
+          <span v-if="auth.isTeacher && !l.is_published" class="chip wait">nháp</span>
+          <span v-if="l.resource_count" class="meta">📎 {{ l.resource_count }} tài nguyên</span>
+          <template v-if="auth.isTeacher">
+            <button class="btn-icon" :disabled="i === 0" title="Lên trên" @click="moveLesson(i, -1)">↑</button>
+            <button class="btn-icon" :disabled="i === lessons.length - 1" title="Xuống dưới" @click="moveLesson(i, 1)">↓</button>
+            <button v-if="l.is_published" class="btn-icon pub" title="Ngừng công khai" @click="togglePublish(l)">🌐</button>
+            <button v-else class="btn-icon draft" title="Công khai" @click="togglePublish(l)">🔒</button>
+            <button class="btn-icon" title="Sửa" @click="openEditLesson(l)">✏️</button>
+          </template>
         </div>
       </div>
 
@@ -74,17 +87,90 @@
 
       <!-- ── Members tab (teacher only) ───────────────── -->
       <div v-if="activeTab === 'members' && auth.isTeacher">
+        <div class="tab-toolbar">
+          <button class="btn-secondary" :disabled="exporting" @click="exportRoster">
+            {{ exporting ? 'Đang xuất…' : '⬇ Xuất CSV' }}
+          </button>
+          <span class="meta">Bảng CSV gồm từng bài tập một cột, mở trực tiếp bằng Excel.</span>
+        </div>
         <div v-if="!members.length" class="empty">Chưa có học viên.</div>
-        <table v-else class="table">
-          <thead><tr><th>Tên</th><th>Email</th><th>Ngày tham gia</th></tr></thead>
-          <tbody>
-            <tr v-for="m in members" :key="m.user_id">
-              <td>{{ m.full_name || m.username }}</td>
-              <td>{{ m.email }}</td>
-              <td>{{ m.enrolled_at ? fmtDate(m.enrolled_at) : '' }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <div class="roster-stats">
+            <div class="rs"><span class="v">{{ roster.total }}</span><span class="l">học viên đang học</span></div>
+            <div class="rs"><span class="v">{{ roster.submitted }}</span><span class="l">đã nộp ít nhất 1 bài</span></div>
+            <div class="rs"><span class="v">{{ roster.atRisk }}</span><span class="l">chưa nộp bài nào</span></div>
+            <div class="rs"><span class="v">{{ roster.awaiting }}</span><span class="l">bài chờ thầy/cô chấm</span></div>
+            <div class="rs"><span class="v">{{ roster.average ?? '—' }}</span><span class="l">điểm trung bình lớp</span></div>
+          </div>
+
+          <table class="table roster">
+            <thead>
+              <tr>
+                <th aria-label="Chi tiết"></th>
+                <th>Học viên</th>
+                <th>Tiến độ nộp bài</th>
+                <th>Chấm điểm</th>
+                <th>Điểm TB</th>
+                <th>Hoạt động cuối</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="m in members" :key="m.id">
+                <tr :class="{ 'row-atrisk': roster.isAtRisk(m) }">
+                  <td class="cell-toggle">
+                    <button class="toggle" :class="{ open: expanded[m.id] }"
+                            :aria-expanded="!!expanded[m.id]"
+                            :aria-label="expanded[m.id] ? 'Ẩn chi tiết' : 'Xem chi tiết'"
+                            @click="toggleStudent(m.id)">{{ expanded[m.id] ? '▾' : '▸' }}</button>
+                  </td>
+                  <td>
+                    <div class="who">
+                      <strong>{{ m.full_name }}</strong>
+                      <span class="muted">{{ m.email }}</span>
+                      <span v-if="m.status !== 'active'" class="chip drop">đã rời lớp</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="prog-line">
+                      <span>{{ m.submitted }}/{{ m.assignments_total }}</span>
+                      <span v-if="m.missing" class="chip miss">nợ {{ m.missing }}</span>
+                    </div>
+                    <div class="bar"><div class="fill" :style="{ width: donePct(m) + '%' }" /></div>
+                  </td>
+                  <td>
+                    <div class="prog-line">
+                      <span>{{ m.graded }} đã chấm</span>
+                      <span v-if="m.awaiting_grade" class="chip wait">{{ m.awaiting_grade }} chờ</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="prog-line">
+                      <strong>{{ m.average_score ?? '—' }}</strong>
+                      <span v-if="m.score_pct !== null" class="muted">{{ m.score_pct }}%</span>
+                    </div>
+                  </td>
+                  <td class="muted">{{ m.last_activity ? fmtDate(m.last_activity) : 'chưa hoạt động' }}</td>
+                </tr>
+                <tr v-if="expanded[m.id]" class="detail-row">
+                  <td></td>
+                  <td colspan="5">
+                    <div v-if="!m.progress.length" class="empty">Lớp chưa có bài tập.</div>
+                    <div v-for="p in m.progress" :key="p.assignment_id" class="progress-row">
+                      <span class="dot" :class="p.state"></span>
+                      <span class="p-title">{{ p.title }}</span>
+                      <span class="p-state">{{ stateLabels[p.state] }}</span>
+                      <span class="muted">hạn {{ fmtDate(p.deadline) }}</span>
+                      <span v-if="p.submitted_at" class="muted">nộp {{ fmtDate(p.submitted_at) }}</span>
+                      <span v-else-if="p.synced_at" class="muted">kết quả đồng bộ {{ fmtDate(p.synced_at) }}</span>
+                      <span v-if="p.score !== null" class="score-tag">{{ p.score }}/{{ p.max_score }}</span>
+                      <span v-if="p.mistakes" class="chip miss">{{ p.mistakes }} lỗi</span>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </template>
       </div>
 
       <!-- ── Analytics tab (teacher only) ─────────────────── -->
@@ -93,146 +179,34 @@
       </div>
     </div>
 
-    <!-- ── Create Assignment Modal ──────────────────────── -->
-    <div v-if="showCreateAssignment" class="modal-overlay" @click.self="showCreateAssignment = false">
-      <div class="modal">
-        <h2>Tạo bài tập mới</h2>
-        <div class="field">
-          <label>Tiêu đề <span class="req">*</span></label>
-          <input class="form-input" v-model="newAssignment.title" placeholder="Bài tập chương 1…" />
-        </div>
-        <div class="field">
-          <label>Mô tả <span class="req">*</span></label>
-          <textarea class="form-input" v-model="newAssignment.description" rows="3" placeholder="Yêu cầu, hướng dẫn…" />
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Hạn nộp <span class="req">*</span></label>
-            <input class="form-input" type="datetime-local" v-model="newAssignment.deadline" />
-          </div>
-          <div class="field">
-            <label>Điểm tối đa</label>
-            <input class="form-input" type="number" v-model.number="newAssignment.max_score" min="0" max="100" />
-          </div>
-        </div>
-        <div class="field">
-          <label>Loại bài tập</label>
-          <select class="form-input" v-model="newAssignment.assignment_type">
-            <option value="homework">Bài tập về nhà</option>
-            <option value="project">Đồ án / Dự án</option>
-            <option value="exam">Kiểm tra</option>
-          </select>
-        </div>
-        <p v-if="assignmentError" class="error">{{ assignmentError }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showCreateAssignment = false">Huỷ</button>
-          <button class="btn-primary" :disabled="savingAssignment" @click="createAssignment">
-            {{ savingAssignment ? 'Đang tạo…' : 'Tạo bài tập' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- ── Create Assignment ──────────────────────── -->
+    <AssignmentCreateModal :class-id="classId" :files="files"
+                           v-model:show="showCreateAssignment"
+                           @created="onAssignmentCreated" @uploaded="onFileUploaded" />
 
-    <!-- ── Create Lesson Modal ──────────────────────────── -->
-    <div v-if="showCreateLesson" class="modal-overlay" @click.self="showCreateLesson = false">
-      <div class="modal">
-        <h2>Tạo bài học mới</h2>
-        <div class="field">
-          <label>Tiêu đề <span class="req">*</span></label>
-          <input class="form-input" v-model="newLesson.title" placeholder="Bài 1: Giới thiệu…" />
-        </div>
-        <div class="field">
-          <label>Nội dung (Markdown)</label>
-          <textarea class="form-input" v-model="newLesson.content" rows="5"
-                    placeholder="## Nội dung bài học..." />
-        </div>
-        <div class="field">
-          <label>Thứ tự</label>
-          <input class="form-input" type="number" v-model.number="newLesson.sort_order" min="0" />
-        </div>
-        <p v-if="lessonError" class="error">{{ lessonError }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showCreateLesson = false">Huỷ</button>
-          <button class="btn-primary" :disabled="savingLesson" @click="createLesson">
-            {{ savingLesson ? 'Đang tạo…' : 'Tạo bài học' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- ── Lesson editor (create + edit) ────────────────── -->
+    <LessonEditorModal :class-id="classId" :files="files" :lesson="editingLesson"
+                       v-model:show="showLessonEditor" @saved="onLessonSaved" />
+
     <!-- ── Edit Assignment Modal ──────────────────────── -->
-    <div v-if="showEditAssignment" class="modal-overlay" @click.self="showEditAssignment = false">
-      <div class="modal">
-        <h2>Sửa bài tập</h2>
-        <div class="field">
-          <label>Tiêu đề <span class="req">*</span></label>
-          <input class="form-input" v-model="editAssignment.title" />
-        </div>
-        <div class="field">
-          <label>Mô tả <span class="req">*</span></label>
-          <textarea class="form-input" v-model="editAssignment.description" rows="3" />
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Hạn nộp <span class="req">*</span></label>
-            <input class="form-input" type="datetime-local" v-model="editAssignment.deadline" />
-          </div>
-          <div class="field">
-            <label>Điểm tối đa</label>
-            <input class="form-input" type="number" v-model.number="editAssignment.max_score" min="0" max="100" />
-          </div>
-        </div>
-        <div class="field">
-          <label>Loại bài tập</label>
-          <select class="form-input" v-model="editAssignment.assignment_type">
-            <option value="homework">Bài tập về nhà</option>
-            <option value="project">Đồ án / Dự án</option>
-            <option value="exam">Kiểm tra</option>
-          </select>
-        </div>
-        <p v-if="editAssignmentError" class="error">{{ editAssignmentError }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showEditAssignment = false">Huỷ</button>
-          <button class="btn-primary" :disabled="savingEditAssignment" @click="saveEditAssignment">
-            {{ savingEditAssignment ? 'Đang lưu…' : 'Lưu thay đổi' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Edit Lesson Modal ─────────────────────────── -->
-    <div v-if="showEditLesson" class="modal-overlay" @click.self="showEditLesson = false">
-      <div class="modal">
-        <h2>Sửa bài học</h2>
-        <div class="field">
-          <label>Tiêu đề <span class="req">*</span></label>
-          <input class="form-input" v-model="editLesson.title" />
-        </div>
-        <div class="field">
-          <label>Nội dung (Markdown)</label>
-          <textarea class="form-input" v-model="editLesson.content" rows="6" />
-        </div>
-        <div class="field">
-          <label>Thứ tự</label>
-          <input class="form-input" type="number" v-model.number="editLesson.sort_order" min="0" />
-        </div>
-        <p v-if="editLessonError" class="error">{{ editLessonError }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showEditLesson = false">Huỷ</button>
-          <button class="btn-primary" :disabled="savingEditLesson" @click="saveEditLesson">
-            {{ savingEditLesson ? 'Đang lưu…' : 'Lưu thay đổi' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AssignmentEditModal :class-id="classId" :assignment="editAssignment"
+                         v-model:show="showEditAssignment" @saved="onAssignmentSaved" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import ClassAnalytics from '@/components/ClassAnalytics.vue'
+import AssignmentEditModal from '@/components/AssignmentEditModal.vue'
+import AssignmentCreateModal from '@/components/AssignmentCreateModal.vue'
+import LessonEditorModal from '@/components/LessonEditorModal.vue'
+import { kindLabel } from '@/utils/assignmentTemplates'
+import { lessonTypeOf as typeOf } from '@/utils/lessonTemplates'
+import { downloadFile as downloadCsv } from '@/utils/download'
+import { openClassFileInJamovi } from '@/utils/openInJamovi'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -247,12 +221,12 @@ const files = ref<any[]>([])
 const members = ref<any[]>([])
 const uploadingFile = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const activeTab = ref('assignments')
+const activeTab = ref('lessons')
 
 const tabs = computed(() => {
   const t = [
-    { key: 'assignments', label: 'Bài tập' },
     { key: 'lessons', label: 'Bài học' },
+    { key: 'assignments', label: 'Bài tập' },
     { key: 'quizzes', label: 'Quiz' },
     { key: 'files', label: 'Tệp' },
   ]
@@ -261,123 +235,106 @@ const tabs = computed(() => {
   return t
 })
 
-// ── Assignment creation ─────────────────────────────
-const showCreateAssignment = ref(false)
-const savingAssignment = ref(false)
-const assignmentError = ref('')
-const defaultDeadline = () => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 16) }
-const newAssignment = reactive({ title: '', description: '', deadline: defaultDeadline(), max_score: 10, assignment_type: 'homework' })
+// ── Members tab ─────────────────────────────────────
+const stateLabels: Record<string, string> = {
+  graded: 'đã chấm',
+  submitted: 'đã nộp, chờ chấm',
+  missing: 'chưa nộp – quá hạn',
+  open: 'chưa tới hạn',
+}
+const expanded = ref<Record<string, boolean>>({})
+function toggleStudent(id: string) { expanded.value[id] = !expanded.value[id] }
+function donePct(m: any) {
+  return m.assignments_total ? Math.round((m.submitted / m.assignments_total) * 100) : 0
+}
+function isAtRisk(m: any) {
+  return m.status === 'active' && m.submitted === 0 && m.missing > 0
+}
+const roster = computed(() => {
+  const active = members.value.filter(m => m.status === 'active')
+  const scores = active.map(m => m.average_score).filter((s: any) => s !== null)
+  return {
+    total: active.length,
+    submitted: active.filter(m => m.submitted > 0).length,
+    atRisk: active.filter(isAtRisk).length,
+    awaiting: active.reduce((n: number, m: any) => n + m.awaiting_grade, 0),
+    average: scores.length ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(2) : null,
+    isAtRisk,
+  }
+})
 
-async function createAssignment() {
-  assignmentError.value = ''
-  if (!newAssignment.title.trim()) { assignmentError.value = 'Vui lòng nhập tiêu đề'; return }
-  if (!newAssignment.description.trim()) { assignmentError.value = 'Vui lòng nhập mô tả'; return }
-  if (!newAssignment.deadline) { assignmentError.value = 'Vui lòng chọn hạn nộp'; return }
-  savingAssignment.value = true
+const exporting = ref(false)
+
+/** One CSV per class, one column per assignment — the same rows the table shows. */
+async function exportRoster() {
+  exporting.value = true
   try {
-    await api.post(`/classes/${classId}/assignments`, {
-      ...newAssignment,
-      deadline: new Date(newAssignment.deadline).toISOString(),
-    })
-    showCreateAssignment.value = false
-    Object.assign(newAssignment, { title: '', description: '', deadline: defaultDeadline(), max_score: 10, assignment_type: 'homework' })
-    const { data } = await api.get(`/classes/${classId}/assignments`)
-    assignments.value = data
-  } catch (e: any) {
-    const d = e?.response?.data?.detail
-    assignmentError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi tạo bài tập'
-  } finally { savingAssignment.value = false }
+    await downloadCsv(`/classes/${classId}/students/export`, `hoc_vien_${classId}.csv`)
+  } catch {
+    alert('Không xuất được CSV — hãy thử lại sau ít phút')
+  } finally { exporting.value = false }
 }
 
-// ── Lesson creation ──────────────────────────────────
-const showCreateLesson = ref(false)
-const savingLesson = ref(false)
-const lessonError = ref('')
-const newLesson = reactive({ title: '', content: '', sort_order: 0 })
+// ── Assignment creation ─────────────────────────────
+const showCreateAssignment = ref(false)
 
-async function createLesson() {
-  lessonError.value = ''
-  if (!newLesson.title.trim()) { lessonError.value = 'Vui lòng nhập tiêu đề'; return }
-  savingLesson.value = true
-  try {
-    await api.post(`/classes/${classId}/lessons`, { ...newLesson })
-    showCreateLesson.value = false
-    Object.assign(newLesson, { title: '', content: '', sort_order: 0 })
-    const { data } = await api.get(`/classes/${classId}/lessons`)
-    lessons.value = data
-  } catch (e: any) {
-    const d = e?.response?.data?.detail
-    lessonError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi tạo bài học'
-  } finally { savingLesson.value = false }
+function onAssignmentCreated(a: any) {
+  assignments.value.unshift(a)
+}
+function onFileUploaded(f: any) {
+  files.value.push({ ...f, created_at: new Date().toISOString() })
+}
+
+// ── Lessons ──────────────────────────────────────────
+const showLessonEditor = ref(false)
+const editingLesson = ref<any>(null)
+
+async function reloadLessons() {
+  const { data } = await api.get(`/classes/${classId}/lessons`)
+  lessons.value = data
+}
+
+function openCreateLesson() {
+  editingLesson.value = null
+  showLessonEditor.value = true
+}
+
+function openEditLesson(l: any) {
+  editingLesson.value = l
+  showLessonEditor.value = true
+}
+
+function onLessonSaved(saved: any) {
+  const idx = lessons.value.findIndex(l => l.id === saved.id)
+  if (idx === -1) lessons.value.push(saved)
+  else lessons.value[idx] = { ...lessons.value[idx], ...saved }
+  lessons.value.sort((a, b) => a.sort_order - b.sort_order)
+}
+
+async function togglePublish(l: any) {
+  await api.patch(`/classes/${classId}/lessons/${l.id}`, { is_published: !l.is_published })
+  await reloadLessons()
+}
+
+async function moveLesson(i: number, dir: number) {
+  const j = i + dir
+  if (j < 0 || j >= lessons.value.length) return
+  const order = lessons.value.map(l => l.id)
+  ;[order[i], order[j]] = [order[j], order[i]]
+  await api.patch(`/classes/${classId}/lessons/reorder`, { order })
+  await reloadLessons()
 }
 
 // ── Assignment edit ────────────────────────────
-// (ISO → datetime-local conversion helper)
-function isoToLocal(iso: string) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 const showEditAssignment = ref(false)
-const savingEditAssignment = ref(false)
-const editAssignmentError = ref('')
-const editAssignment = reactive({ id: '', title: '', description: '', deadline: '', max_score: 10, assignment_type: 'homework' })
+const editAssignment = ref<any>(null)
 function openEditAssignment(a: any) {
-  Object.assign(editAssignment, { id: a.id, title: a.title, description: a.description, deadline: isoToLocal(a.deadline), max_score: a.max_score, assignment_type: a.assignment_type || 'homework' })
-  editAssignmentError.value = ''
+  editAssignment.value = a
   showEditAssignment.value = true
 }
-async function saveEditAssignment() {
-  editAssignmentError.value = ''
-  if (!editAssignment.title.trim()) { editAssignmentError.value = 'Vui lòng nhập tiêu đề'; return }
-  if (!editAssignment.description.trim()) { editAssignmentError.value = 'Vui lòng nhập mô tả'; return }
-  if (!editAssignment.deadline) { editAssignmentError.value = 'Vui lòng chọn hạn nộp'; return }
-  savingEditAssignment.value = true
-  try {
-    const updated = await api.patch(`/classes/${classId}/assignments/${editAssignment.id}`, {
-      title: editAssignment.title,
-      description: editAssignment.description,
-      deadline: new Date(editAssignment.deadline).toISOString(),
-      max_score: editAssignment.max_score,
-      assignment_type: editAssignment.assignment_type,
-    })
-    const idx = assignments.value.findIndex(a => a.id === editAssignment.id)
-    if (idx !== -1) assignments.value[idx] = updated.data
-    showEditAssignment.value = false
-  } catch (e: any) {
-    const d = e?.response?.data?.detail
-    editAssignmentError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi lưu'
-  } finally { savingEditAssignment.value = false }
-}
-
-// ── Lesson edit ───────────────────────────────
-const showEditLesson = ref(false)
-const savingEditLesson = ref(false)
-const editLessonError = ref('')
-const editLesson = reactive({ id: '', title: '', content: '', sort_order: 0 })
-function openEditLesson(l: any) {
-  Object.assign(editLesson, { id: l.id, title: l.title, content: l.content || '', sort_order: l.sort_order })
-  editLessonError.value = ''
-  showEditLesson.value = true
-}
-async function saveEditLesson() {
-  editLessonError.value = ''
-  if (!editLesson.title.trim()) { editLessonError.value = 'Vui lòng nhập tiêu đề'; return }
-  savingEditLesson.value = true
-  try {
-    const updated = await api.patch(`/classes/${classId}/lessons/${editLesson.id}`, {
-      title: editLesson.title,
-      content: editLesson.content,
-      sort_order: editLesson.sort_order,
-    })
-    const idx = lessons.value.findIndex(l => l.id === editLesson.id)
-    if (idx !== -1) lessons.value[idx] = updated.data
-    showEditLesson.value = false
-  } catch (e: any) {
-    const d = e?.response?.data?.detail
-    editLessonError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi lưu'
-  } finally { savingEditLesson.value = false }
+function onAssignmentSaved(updated: any) {
+  const idx = assignments.value.findIndex(a => a.id === updated.id)
+  if (idx !== -1) assignments.value[idx] = updated
 }
 
 async function uploadFile(event: Event) {
@@ -403,13 +360,7 @@ async function uploadFile(event: Event) {
 
 async function openInJamovi(fileId: string, fileName: string) {
   try {
-    const res = await api.post(`/classes/${classId}/files/${fileId}/open-url`)
-    const token: string = res.data.token
-    const name: string = res.data.filename ?? fileName
-    const base = window.location.origin
-    const fileUrl = encodeURIComponent(`${base}/api/v1/files/ot/${token}`)
-    const title = encodeURIComponent(name)
-    window.open(`${base}/#open?url=${fileUrl}&title=${title}`, '_blank')
+    await openClassFileInJamovi(classId, fileId, fileName)
   } catch {
     alert('Không thể mở file trong Jamovi')
   }
@@ -464,7 +415,7 @@ onMounted(async () => {
     files.value = fileRes.data
     if (auth.isTeacher) {
       const memberRes = await api.get(`/classes/${classId}/students`)
-      members.value = memberRes.data
+      members.value = memberRes.data.sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'vi'))
     }
   } finally { loading.value = false }
 })
@@ -494,6 +445,37 @@ onMounted(async () => {
 .table th, .table td { padding: 0.6rem 0.9rem; text-align: left; border-bottom: 1px solid var(--amber-100); font-size: 0.875rem; }
 .table th { background: var(--amber-50); font-weight: 700; color: var(--amber-800); }
 .table tr:last-child td { border-bottom: none; }
+/* Members tab */
+.roster-stats { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1rem; }
+.rs { background: #fff; border: 1px solid var(--amber-200); border-radius: 10px; padding: 0.5rem 0.9rem; box-shadow: 0 1px 4px var(--color-card-shadow); }
+.rs .v { display: block; font-size: 1.15rem; font-weight: 700; color: var(--amber-800); }
+.rs .l { font-size: 0.75rem; color: var(--color-text-muted); }
+.roster td { vertical-align: middle; }
+.row-atrisk td { background: #FEF2F2; }
+.cell-toggle { width: 2rem; padding-right: 0 !important; }
+.toggle { border: none; background: transparent; cursor: pointer; font-size: 1rem; line-height: 1; color: var(--amber-600); padding: 0.2rem 0.4rem; border-radius: 6px; }
+.toggle:hover { background: var(--amber-100); color: var(--amber-900); }
+.toggle.open { color: #DC2626; }
+.who { display: flex; flex-direction: column; gap: 0.1rem; }
+.muted { color: var(--color-text-muted); font-size: 0.78rem; }
+.prog-line { display: flex; align-items: center; gap: 0.4rem; }
+.bar { height: 5px; background: var(--amber-100); border-radius: 4px; margin-top: 0.3rem; min-width: 80px; overflow: hidden; }
+.fill { height: 100%; background: var(--amber-500); border-radius: 4px; }
+.chip { font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 8px; white-space: nowrap; }
+.chip.miss { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
+.chip.wait { background: var(--amber-100); color: var(--amber-800); border: 1px solid var(--amber-300); }
+.chip.drop { background: #F3F4F6; color: #6B7280; }
+.chip.auto { background: #E7F6EC; color: #166534; border: 1px solid #BBE5C7; }
+.kind-tag { font-size: 0.72rem; font-weight: 700; color: var(--amber-700); background: var(--amber-100); border: 1px solid var(--amber-200); padding: 0.1rem 0.45rem; border-radius: 8px; white-space: nowrap; }
+.detail-row td { background: var(--amber-50); padding-top: 0.4rem; padding-bottom: 0.5rem; }
+.progress-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.28rem 0; font-size: 0.82rem; }
+.p-title { font-weight: 600; color: var(--amber-800); }
+.p-state { color: var(--color-text-muted); font-size: 0.75rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot.graded { background: #16A34A; }
+.dot.submitted { background: var(--amber-500); }
+.dot.missing { background: #DC2626; }
+.dot.open { background: #D1D5DB; }
 /* Buttons */
 .btn-primary { background: var(--color-primary); color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 7px; cursor: pointer; font-size: 0.875rem; font-weight: 600; display: inline-flex; align-items: center; }
 .btn-primary:hover { background: var(--color-primary-hover); }
@@ -515,4 +497,9 @@ textarea.form-input { resize: vertical; }
 .error { color: #DC2626; font-size: 0.85rem; background: #FEF2F2; border: 1px solid #FECACA; padding: 0.4rem 0.6rem; border-radius: 6px; margin: 0 0 0.75rem; }
 .btn-icon { background: transparent; border: none; cursor: pointer; font-size: 0.95rem; padding: 0 0.25rem; opacity: 0.6; line-height: 1; }
 .btn-icon:hover { opacity: 1; }
+.btn-icon:disabled { opacity: 0.2; cursor: default; }
+.btn-icon.pub, .btn-icon.draft { opacity: 1; border-radius: 6px; padding: 0.1rem 0.3rem; }
+.btn-icon.pub { background: #E7F6EC; }
+.btn-icon.draft { background: var(--amber-100); }
+.check-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.875rem; color: var(--amber-800); margin-bottom: 1rem; }
 </style>

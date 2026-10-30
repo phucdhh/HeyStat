@@ -2,6 +2,7 @@
   <div class="class-list-page">
     <div class="page-header">
       <h1>Lớp học</h1>
+      <button v-if="auth.isTeacher" class="btn-secondary" @click="showCreate = true">+ Tạo lớp mới</button>
       <button class="btn-primary" @click="showJoin = true">+ Tham gia lớp</button>
     </div>
 
@@ -33,17 +34,22 @@
         </div>
       </div>
     </div>
+    <ClassCreateModal :show="showCreate" @close="showCreate = false" @created="load" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import api from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+import ClassCreateModal from '@/components/ClassCreateModal.vue'
 
+const auth = useAuthStore()
 const classes = ref<any[]>([])
 const loading = ref(true)
 
 const showJoin = ref(false)
+const showCreate = ref(false)
 const joinKey = ref('')
 const joinError = ref('')
 const joining = ref(false)

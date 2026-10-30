@@ -143,6 +143,43 @@ async def download_file(
     return FileResponse(str(full_path), filename=cf.file_name)
 
 
+@router.get("/classes/{class_id}/files/{file_id}/omv-schema")
+async def preview_file_schema(
+    class_id: uuid.UUID,
+    file_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The analyses/tables a ``.omv`` already contains, before it is an assignment.
+
+    Teachers build an assignment around a solved example file, so the check
+    pickers must work while the assignment does not exist yet. Same payload as
+    ``/assignments/{id}/grading-schema``.
+    """
+    cls = await _get_class_or_404(db, class_id)
+    roles = await _get_user_roles_set(db, current_user.id)
+    if "admin" not in roles and cls.teacher_id != current_user.id:
+        raise HTTPException(403, "Chỉ giáo viên mới đọc được cấu trúc tệp")
+    r = await db.execute(
+        select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id)
+    )
+    cf = r.scalar_one_or_none()
+    if not cf:
+        raise HTTPException(404, "Tệp không tồn tại")
+
+    from services.omv_reader import grading_schema, parse_omv
+
+    full_path = Path(settings.upload_dir) / cf.file_path
+    if not full_path.is_file():
+        raise HTTPException(404, "Tệp không tồn tại trên server")
+    try:
+        doc = parse_omv(full_path.read_bytes())
+    except Exception as exc:
+        raise HTTPException(422, f"Không đọc được bảng kết quả từ file này: {exc}")
+
+    return {"file_name": cf.file_name, "analyses": grading_schema(doc)}
+
+
 @router.delete("/classes/{class_id}/files/{file_id}", status_code=204)
 async def delete_file(
     class_id: uuid.UUID,

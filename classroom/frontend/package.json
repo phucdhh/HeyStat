@@ -10,10 +10,10 @@
   "dependencies": {
     "@tanstack/vue-query": "^5.28.0",
     "@types/markdown-it": "^14.1.2",
+    "@vscode/markdown-it-katex": "^1.1.2",
     "axios": "^1.6.7",
     "katex": "^0.16.42",
     "markdown-it": "^14.1.1",
-    "markdown-it-katex": "^2.0.3",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"

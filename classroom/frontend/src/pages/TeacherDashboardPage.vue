@@ -61,40 +61,7 @@
     </div>
 
     <!-- Create class modal -->
-    <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal">
-        <h2>Tạo lớp mới</h2>
-        <div class="field">
-          <label>Tên lớp <span class="req">*</span></label>
-          <input class="form-input" v-model="newClass.title" placeholder="Ví dụ: Thống kê K1 2025" />
-        </div>
-        <div class="field">
-          <label>Mô tả</label>
-          <textarea class="form-input" v-model="newClass.description" rows="2" placeholder="Mô tả ngắn về lớp học…" />
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Ngày bắt đầu <span class="req">*</span></label>
-            <input class="form-input" type="datetime-local" v-model="newClass.starts_at" />
-          </div>
-          <div class="field">
-            <label>Ngày kết thúc <span class="req">*</span></label>
-            <input class="form-input" type="datetime-local" v-model="newClass.ends_at" />
-          </div>
-        </div>
-        <div class="field">
-          <label>Số học viên tối đa</label>
-          <input class="form-input" v-model.number="newClass.max_students" type="number" min="1" max="500" />
-        </div>
-        <p v-if="createError" class="error">{{ createError }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showCreate = false">Huỷ</button>
-          <button class="btn-primary" :disabled="creating" @click="createClass">
-            {{ creating ? 'Đang tạo…' : 'Tạo lớp' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ClassCreateModal :show="showCreate" @close="showCreate = false" @created="load" />
 
     <div v-if="copiedMsg" class="toast">{{ copiedMsg }}</div>
     <!-- Key display overlay -->
@@ -113,8 +80,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/api/client'
+import ClassCreateModal from '@/components/ClassCreateModal.vue'
+import { downloadFile } from '@/utils/download'
 
 const classes = ref<any[]>([])
 const loading = ref(true)
@@ -123,13 +92,6 @@ const selectedClass = ref<string | null>(null)
 const progress = ref<any>(null)
 const progressLoading = ref(false)
 const showCreate = ref(false)
-const creating = ref(false)
-const nowIso = () => new Date().toISOString().slice(0, 16)
-const endIso = () => {
-  const d = new Date(); d.setMonth(d.getMonth() + 3); return d.toISOString().slice(0, 16)
-}
-const newClass = reactive({ title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso() })
-const createError = ref('')
 const copiedMsg = ref('')
 const displayedKey = ref('')
 
@@ -154,29 +116,6 @@ async function loadProgress() {
     const { data } = await api.get(`/classes/${selectedClass.value}/progress`)
     progress.value = data
   } finally { progressLoading.value = false }
-}
-
-async function createClass() {
-  createError.value = ''
-  if (!newClass.title.trim()) { createError.value = 'Vui lòng nhập tên lớp'; return }
-  if (!newClass.starts_at) { createError.value = 'Vui lòng chọn ngày bắt đầu'; return }
-  if (!newClass.ends_at) { createError.value = 'Vui lòng chọn ngày kết thúc'; return }
-  creating.value = true
-  try {
-    await api.post('/classes', {
-      title: newClass.title,
-      description: newClass.description,
-      max_students: newClass.max_students,
-      starts_at: new Date(newClass.starts_at).toISOString(),
-      ends_at: new Date(newClass.ends_at).toISOString(),
-    })
-    showCreate.value = false
-    Object.assign(newClass, { title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso() })
-    await load()
-  } catch (e: any) {
-    const d = e?.response?.data?.detail
-    createError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi tạo lớp'
-  } finally { creating.value = false }
 }
 
 function statusLabel(s: string) {
@@ -211,7 +150,12 @@ async function doCopyKey() {
 }
 
 async function exportGrades(classId: string) {
-  window.open(`/api/v1/classes/${classId}/grades/export`, '_blank')
+  try {
+    await downloadFile(`/classes/${classId}/grades/export`, `bang_diem_${classId}.csv`)
+  } catch {
+    copiedMsg.value = 'Không tải được bảng điểm'
+    setTimeout(() => (copiedMsg.value = ''), 3000)
+  }
 }
 
 onMounted(load)

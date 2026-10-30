@@ -237,6 +237,8 @@ class Lesson(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     class_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 'standard'|'practical'|'video'|'reading' – decides what the student page leads with
+    lesson_type: Mapped[str] = mapped_column(String(20), default="standard")
     content: Mapped[Optional[str]] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(SmallInteger, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)

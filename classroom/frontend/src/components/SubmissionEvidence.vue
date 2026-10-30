@@ -6,7 +6,10 @@
         <tbody>
           <tr v-for="a in answers" :key="a.id">
             <td class="lbl">{{ a.label }}</td>
-            <td>{{ a.given ?? '—' }}</td>
+            <td>
+              <div>{{ a.given ?? '—' }}</div>
+              <p v-if="a.note" class="note">{{ a.note }}</p>
+            </td>
             <td :class="a.passed === null ? 'muted' : a.passed ? 'ok' : 'bad'">
               {{ a.passed === null ? 'chưa chấm' : a.passed ? `đạt ${a.awarded}/${a.points}` : `0/${a.points}` }}
             </td>
@@ -42,21 +45,27 @@ import OutputTable from '@/components/OutputTable.vue'
 
 const props = defineProps<{ submission: any }>()
 
+const NOTE_SUFFIX = '_note'
+
 const tables = computed(() => props.submission?.outputs ?? [])
 const items = computed(() => props.submission?.auto_grade?.items ?? [])
 
 const answers = computed(() => {
-  const given = props.submission?.answers ?? {}
+  const given: Record<string, any> = props.submission?.answers ?? {}
   const graded: Record<string, any> = {}
   for (const it of items.value) if (it.kind === 'answer') graded[it.id] = it
-  return Object.keys(given).map((id) => ({
-    id,
-    label: graded[id]?.label ?? id,
-    given: given[id],
-    passed: graded[id] ? !!graded[id].passed : null,
-    awarded: graded[id]?.awarded,
-    points: graded[id]?.points,
-  }))
+  // Free-text explanations ride along as "<qid>_note" and are never graded as a value.
+  return Object.keys(given)
+    .filter((id) => !id.endsWith(NOTE_SUFFIX))
+    .map((id) => ({
+      id,
+      label: graded[id]?.label ?? id,
+      given: given[id],
+      note: given[id + NOTE_SUFFIX],
+      passed: graded[id] ? !!graded[id].passed : null,
+      awarded: graded[id]?.awarded,
+      points: graded[id]?.points,
+    }))
 })
 
 function fmt(v: any) {
@@ -70,6 +79,7 @@ h4 { margin: 1rem 0 0.4rem; color: var(--amber-800); font-size: 0.9rem; }
 table { width: 100%; border-collapse: collapse; }
 td { padding: 0.28rem 0.4rem; border-bottom: 1px solid var(--amber-100); }
 .lbl { font-weight: 600; width: 45%; }
+.note { margin: 0.3rem 0 0; padding: 0.4rem 0.55rem; background: #faf7ef; border-left: 3px solid var(--amber-300); border-radius: 0 4px 4px 0; white-space: pre-wrap; color: #444; }
 ul { list-style: none; margin: 0; padding: 0; }
 li { padding: 0.3rem 0; border-bottom: 1px solid #f0f0f0; }
 li strong { display: block; }

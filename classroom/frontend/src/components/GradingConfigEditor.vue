@@ -22,9 +22,9 @@
     <div v-for="(q, i) in questions" :key="i" class="block">
       <div class="row">
         <input v-model="q.label" class="grow" placeholder="Nội dung câu hỏi" />
-        <select v-model="q.type">
-          <option value="number">Số</option>
-          <option value="text">Chữ</option>
+        <select v-model="q.type" title="Loại đáp án">
+          <option value="number">Số (± sai số)</option>
+          <option value="text">Chữ (nhiều đáp án đúng)</option>
         </select>
         <input v-model="q.answer" class="mid" :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
         <input v-if="q.type === 'number'" v-model.number="q.tolerance" class="num" type="number" step="any" title="Sai số cho phép" />
@@ -33,6 +33,9 @@
       </div>
       <div class="row">
         <input v-model="q.explain" class="grow" placeholder="Giải thích khi học viên trả lời sai" />
+        <label class="chk"><input type="checkbox" v-model="q.comment" /> Thêm ô lời giải</label>
+        <input v-if="q.comment" v-model="q.comment_hint" class="grow"
+               placeholder="Nhãn hiển thị trên ô lời giải (vd. 'Cách bạn làm / lý do chọn giá trị này')" />
       </div>
     </div>
     <div class="row">
@@ -187,7 +190,7 @@ watch(() => [props.answerKey, props.gradingConfig], load, { immediate: true })
 onMounted(loadSchema)
 
 function addQuestion() {
-  questions.push({ id: `q${questions.length + 1}`, label: '', type: 'number', answer: null, tolerance: 0.001, points: 1, explain: '' })
+  questions.push({ id: `q${questions.length + 1}`, label: '', type: 'number', answer: null, tolerance: 0.001, points: 1, explain: '', comment: false, comment_hint: '' })
 }
 
 function addCheck() {
@@ -246,6 +249,8 @@ input, select { padding: 0.32rem 0.5rem; border: 1px solid var(--amber-300); bor
 input { width: 9rem; }
 .grow { flex: 1; min-width: 12rem; }
 .mid { width: 13rem; }
+.chk { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--amber-800); white-space: nowrap; }
+.chk input { width: auto; }
 .num { width: 4rem; }
 .num2 { width: 6.5rem; }
 .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; border: 1px solid var(--amber-400); background: #fff; color: var(--amber-800); border-radius: 5px; cursor: pointer; font-weight: 600; }

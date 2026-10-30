@@ -20,7 +20,7 @@
 
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div class="layout">
+    <div class="layout" :class="{ rail: !panelOpen }">
       <div class="work">
         <div v-if="embedUrl" class="jamovi-wrapper">
           <iframe :src="embedUrl" class="jamovi-frame" ref="frameEl"
@@ -32,51 +32,56 @@
         <p v-if="autoSavedAt" class="autosave">✓ Phiên được tự lưu lúc {{ autoSavedAt.toLocaleTimeString('vi-VN') }}</p>
       </div>
 
-      <aside class="side">
-        <section v-if="questions.length">
-          <h2>Phần 1 – Trả lời</h2>
-          <div v-for="q in questions" :key="q.id" class="question">
-            <label>{{ q.label }}<span v-if="q.points" class="pts">{{ q.points }}đ</span></label>
-            <input v-if="q.type === 'number'" v-model="answers[q.id]" type="number" step="any" />
-            <input v-else v-model="answers[q.id]" type="text" />
+      <aside class="side" :class="{ rail: !panelOpen }">
+        <button class="panel-toggle" :class="{ closed: !panelOpen }"
+                :title="panelOpen ? 'Thu gọn bảng trả lời' : 'Mở bảng trả lời'"
+                :aria-expanded="panelOpen" @click="togglePanel">
+          {{ panelOpen ? '−' : '☰' }}
+        </button>
+
+        <p v-if="!panelOpen" class="rail-counts">
+          <span class="rc">¶ {{ answered }}/{{ questions.length }}</span>
+          <span class="rc">▤ {{ selected.length }}/{{ tables.length }}</span>
+        </p>
+
+        <template v-if="panelOpen">
+          <section v-if="questions.length">
+            <h2>Phần 1 – Trả lời</h2>
+            <div v-for="q in questions" :key="q.id" class="question">
+              <label>{{ q.label }}<span v-if="q.points" class="pts">{{ q.points }}đ</span></label>
+              <input v-if="q.type === 'number'" v-model="answers[q.id]" type="number" step="any" />
+              <input v-else v-model="answers[q.id]" type="text" />
+              <label v-if="q.comment" class="note-label">{{ q.comment_hint || 'Lời giải / giải thích' }}</label>
+              <textarea v-if="q.comment" v-model="answers[noteKey(q.id)]" rows="4" class="note"
+                        placeholder="Viết cách bạn làm, hoặc lý do chọn giá trị này…" />
+            </div>
+          </section>
+
+          <section v-if="tables.length">
+            <h2>Phần 2 – Bằng chứng (bảng / biểu đồ)</h2>
+            <p class="tip">Chọn các bảng bạn muốn nộp kèm bài.</p>
+            <label v-for="t in tables" :key="t.index" class="table-choice">
+              <input type="checkbox" :value="t.index" v-model="selected" />
+              <span><strong>{{ t.title || 'Bảng' }}</strong><em v-if="t.analysis"> · {{ t.analysis }}</em></span>
+            </label>
+            <button class="small" :disabled="savingSelection || !selected.length" @click="saveSelection">
+              {{ savingSelection ? 'Đang lưu…' : 'Lưu phần đã chọn' }}
+            </button>
+            <OutputTable v-for="t in chosen" :key="t.index" :table="t" />
+          </section>
+
+          <p v-if="session && !instanceId" class="tip">{{ noDatasetHint }}</p>
+
+          <div v-if="collabRole !== 'observer'" class="actions">
+            <button class="secondary" :disabled="!canSync" @click="syncResults">
+              {{ syncing ? 'Đang đồng bộ…' : '🔄 Đồng bộ kết quả' }}
+            </button>
+            <button :disabled="!canSubmit" @click="submit">
+              {{ submitting ? 'Đang nộp…' : 'Nộp bài' }}
+            </button>
           </div>
-        </section>
-
-        <section v-if="tables.length">
-          <h2>Phần 2 – Bằng chứng (bảng / biểu đồ)</h2>
-          <p class="tip">Chọn các bảng bạn muốn nộp kèm bài.</p>
-          <label v-for="t in tables" :key="t.index" class="table-choice">
-            <input type="checkbox" :value="t.index" v-model="selected" />
-            <span><strong>{{ t.title || 'Bảng' }}</strong><em v-if="t.analysis"> · {{ t.analysis }}</em></span>
-          </label>
-          <button class="small" :disabled="savingSelection || !selected.length" @click="saveSelection">
-            {{ savingSelection ? 'Đang lưu…' : 'Lưu phần đã chọn' }}
-          </button>
-          <OutputTable v-for="t in chosen" :key="t.index" :table="t" />
-        </section>
-
-        <section v-if="result">
-          <h2>Kết quả chấm tự động</h2>
-          <p class="score">{{ result.score }} / {{ result.max_score }}</p>
-          <ul class="items">
-            <li v-for="item in result.items" :key="item.id" :class="item.passed ? 'ok' : 'bad'">
-              <strong>{{ item.passed ? '✓' : '✗' }} {{ item.label }}</strong>
-              <span>{{ item.explanation }}</span>
-            </li>
-          </ul>
-        </section>
-
-        <p v-if="session && !instanceId" class="tip">{{ noDatasetHint }}</p>
-
-        <div v-if="collabRole !== 'observer'" class="actions">
-          <button class="secondary" :disabled="!canSync" @click="syncResults">
-            {{ syncing ? 'Đang đồng bộ…' : '🔄 Đồng bộ kết quả' }}
-          </button>
-          <button :disabled="!canSubmit" @click="submit">
-            {{ submitting ? 'Đang nộp…' : 'Nộp bài' }}
-          </button>
-        </div>
-        <p v-if="submitSuccess" class="success">✓ Đã nộp và đóng băng phiên làm việc.</p>
+          <p v-if="submitSuccess" class="success">✓ Đã nộp và đóng băng phiên làm việc.</p>
+        </template>
       </aside>
     </div>
   </div>
@@ -97,12 +102,25 @@ const assignment = ref<any>(null)
 const questions = ref<any[]>([])
 const answers = ref<Record<string, string>>({})
 
+// The panel covers half the spreadsheet, so its width is remembered per browser.
+const PANEL_KEY = 'heystat.submit.panel'
+const panelOpen = ref(localStorage.getItem(PANEL_KEY) !== 'closed')
+function togglePanel() {
+  panelOpen.value = !panelOpen.value
+  localStorage.setItem(PANEL_KEY, panelOpen.value ? 'open' : 'closed')
+}
+
+/** Free-text explanations travel with the answers but are never graded as a value. */
+const noteKey = (id: string) => `${id}_note`
+const answered = computed(
+  () => questions.value.filter(q => String(answers.value[q.id] ?? '').trim() !== '').length,
+)
+
 const tables = ref<any[]>([])
 const selected = ref<number[]>([])
 const draftId = ref<string | null>(null)
 const chosen = computed(() => tables.value.filter((t) => selected.value.includes(t.index)))
 
-const result = ref<any>(null)
 const error = ref('')
 const submitting = ref(false)
 const syncing = ref(false)
@@ -182,7 +200,6 @@ async function submit() {
     const { data } = await api.post(`/assignments/${assignmentId}/submissions`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
-    result.value = data.auto_grade
     submitSuccess.value = true
     await stop()
     embedUrl.value = null
@@ -220,6 +237,7 @@ h1 { margin: 0; font-size: 1.4rem; }
 .hint { color: #666; font-size: 0.9rem; margin: 0.4rem 0; max-width: 60rem; }
 .helplink { display: inline-block; font-size: 0.85rem; color: #92400e; margin-bottom: 0.6rem; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
+.layout.rail { grid-template-columns: minmax(0, 1fr) 3.5rem; }
 .jamovi-wrapper { border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
 .jamovi-frame { width: 100%; height: 78vh; border: none; }
 .autosave { color: #15803d; font-size: 0.78rem; margin: 0.4rem 0 0; }
@@ -233,14 +251,15 @@ h1 { margin: 0; font-size: 1.4rem; }
 .question label { display: block; font-size: 0.82rem; margin-bottom: 0.2rem; }
 .pts { float: right; color: #92400e; font-weight: 700; font-size: 0.75rem; }
 .question input { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+.note-label { display: block; font-size: 0.76rem; color: #666; margin: 0.4rem 0 0.15rem; }
+.note { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 0.82rem; font-family: inherit; resize: vertical; }
 .table-choice { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.8rem; margin-bottom: 0.35rem; }
 .table-choice em { color: #888; font-style: normal; }
-.score { font-size: 1.3rem; font-weight: 700; color: #1a1a2e; margin: 0 0 0.4rem; }
-.items { list-style: none; margin: 0; padding: 0; font-size: 0.78rem; }
-.items li { padding: 0.35rem 0; border-bottom: 1px solid #eee; }
-.items li span { display: block; color: #555; }
-.ok { color: #15803d; }
-.bad { color: #b91c1c; }
+.panel-toggle { align-self: flex-end; width: 2rem; height: 2rem; padding: 0; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #555; font-size: 1.05rem; line-height: 1; }
+.panel-toggle:hover { background: #f0f0f0; }
+.panel-toggle.closed { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+.rail-counts { display: flex; flex-direction: column; gap: 0.4rem; margin: 0; }
+.rail-counts .rc { font-size: 0.78rem; color: #666; text-align: center; }
 .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 button { padding: 0.6rem 1.1rem; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.92rem; }
 button.small { padding: 0.35rem 0.7rem; font-size: 0.78rem; }
@@ -248,5 +267,5 @@ button.secondary { background: #f0f0f0; color: #333; }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 .success { color: green; font-weight: 600; margin: 0; }
 .error { color: #b91c1c; margin-bottom: 0.6rem; }
-@media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .layout, .layout.rail { grid-template-columns: 1fr; } }
 </style>

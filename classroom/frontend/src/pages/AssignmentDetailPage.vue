@@ -4,7 +4,10 @@
     <div v-else-if="assignment">
 
       <RouterLink :to="`/classes/${classId}`" class="back-link">← Quay lại lớp</RouterLink>
-      <h1>{{ assignment.title }}</h1>
+      <div class="title-row">
+        <h1>{{ assignment.title }}</h1>
+        <button v-if="auth.isTeacher" class="btn-secondary" @click="showEditAssignment = true">✏️ Sửa bài tập</button>
+      </div>
       <p class="desc">{{ assignment.description }}</p>
       <div class="meta-row">
         <span>Hạn nộp: <strong>{{ assignment.deadline ? fmtDate(assignment.deadline) : '—' }}</strong></span>
@@ -12,6 +15,9 @@
         <span v-if="assignment.max_score">Điểm tối đa: <strong>{{ assignment.max_score }}</strong></span>
         <span v-if="assignment.group_size > 1">Nhóm tối đa: <strong>{{ assignment.group_size }} người</strong></span>
       </div>
+
+      <AssignmentEditModal :class-id="classId" :assignment="assignment"
+                           v-model:show="showEditAssignment" @saved="assignment = $event" />
 
       <!-- ════ TEACHER VIEW ════════════════════════════════════════ -->
       <GradingConfigEditor v-if="auth.isTeacher"
@@ -38,7 +44,8 @@
               <td class="td-name">{{ s.student_name || s.student_id.slice(0, 8) }}</td>
               <td class="td-date">{{ fmtDate(s.submitted_at) }}</td>
               <td class="td-file">
-                <a v-if="s.file_path" :href="`/api/v1/submissions/${s.id}/download`" target="_blank" class="file-link">⬇ Tải về</a>
+                <a v-if="s.file_path" href="#" class="file-link"
+                   @click.prevent="saveFile(`/submissions/${s.id}/download`, `${s.student_name || s.id.slice(0, 8)}.omv`)">⬇ Tải về</a>
                 <span v-else class="muted">—</span>
               </td>
               <td class="td-score">
@@ -104,7 +111,8 @@
           <h3>Tệp của lớp</h3>
           <div v-for="f in classFiles" :key="f.id" class="file-row">
             <span>{{ f.filename }}</span>
-            <a :href="`/api/v1/classes/${classId}/files/${f.id}/download`" target="_blank" class="link">Tải xuống</a>
+            <a href="#" class="link"
+               @click.prevent="saveFile(`/classes/${classId}/files/${f.id}/download`, f.file_name)">Tải xuống</a>
           </div>
         </div>
 
@@ -129,16 +137,8 @@
             <div class="sub-row">
               <span>{{ fmtDate(s.submitted_at) }}</span>
               <span :class="`status-${s.status}`">{{ statusLabel(s.status) }}</span>
-              <span v-if="s.score != null" class="score-tag">{{ s.score }} / {{ assignment.max_score }} điểm</span>
-              <span v-if="s.feedback" class="feedback-text">💬 {{ s.feedback }}</span>
               <span v-if="s.is_final" class="final-tag">✓ Bài cuối</span>
             </div>
-            <ul v-if="s.auto_grade?.items?.length" class="mistakes">
-              <li v-for="it in s.auto_grade.items" :key="it.id" :class="it.passed ? 'ok' : 'bad'">
-                <strong>{{ it.passed ? '✓' : '✗' }} {{ it.label }}</strong>
-                <span>{{ it.explanation }}</span>
-              </li>
-            </ul>
           </div>
         </div>
       </template>
@@ -200,6 +200,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/client'
 import GradingConfigEditor from '@/components/GradingConfigEditor.vue'
+import AssignmentEditModal from '@/components/AssignmentEditModal.vue'
 import SubmissionEvidence from '@/components/SubmissionEvidence.vue'
 
 const route = useRoute()
@@ -209,6 +210,7 @@ const auth = useAuthStore()
 
 const loading = ref(true)
 const assignment = ref<any>(null)
+const showEditAssignment = ref(false)
 const classFiles = ref<any[]>([])
 const mySubmissions = ref<any[]>([])
 const groups = ref<any[]>([])
@@ -265,6 +267,16 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+// The API only accepts a Bearer header, so a plain <a href> download would 401
+async function saveFile(url: string, name: string) {
+  const resp = await api.get(url, { responseType: 'blob' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(resp.data as Blob)
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(link.href)
 }
 
 // ── Teacher: load all submissions ──────────────────────────────
@@ -392,6 +404,8 @@ onMounted(async () => {
 .back-link { color: var(--amber-700); text-decoration: none; font-size: 0.875rem; font-weight: 600; }
 .back-link:hover { text-decoration: underline; }
 h1 { margin: 0.5rem 0 0.25rem; color: var(--amber-800); }
+.title-row { display: flex; align-items: center; gap: 0.75rem; }
+.title-row h1 { flex: 1; }
 .desc { color: var(--color-text-muted); margin-bottom: 1rem; line-height: 1.6; }
 .meta-row { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem; color: var(--color-text-muted); margin-bottom: 1.75rem; }
 .meta-row strong { color: var(--amber-800); }
@@ -422,17 +436,9 @@ h1 { margin: 0.5rem 0 0.25rem; color: var(--amber-800); }
 .header-actions { display: flex; gap: 0.5rem; align-items: center; }
 .work-link { text-decoration: none; }
 .sub-block { border-bottom: 1px solid var(--amber-100); }
-.mistakes { list-style: none; margin: 0; padding: 0.2rem 0 0.6rem; font-size: 0.8rem; }
-.mistakes li { padding: 0.25rem 0; }
-.mistakes li strong { display: inline-block; margin-right: 0.3rem; }
-.mistakes li span { color: var(--color-text-muted); }
-.mistakes .ok { color: #059669; }
-.mistakes .bad { color: #B91C1C; }
 .sub-row { display: flex; gap: 0.75rem; align-items: center; padding: 0.6rem 0; font-size: 0.875rem; flex-wrap: wrap; }
 .status-submitted { color: #d97706; font-weight: 600; }
 .status-graded { color: #059669; font-weight: 600; }
-.score-tag { background: var(--amber-100); color: var(--amber-800); padding: 0.1rem 0.5rem; border-radius: 8px; font-weight: 700; font-size: 0.8rem; }
-.feedback-text { color: var(--color-text-muted); font-size: 0.82rem; max-width: 300px; }
 .final-tag { color: #059669; font-weight: 700; font-size: 0.8rem; }
 .badge-closed { background: #FEE2E2; color: #991B1B; padding: 0.2rem 0.6rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; }
 

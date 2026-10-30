@@ -68,6 +68,16 @@ async def _class_access_role(db, cls, user):
     raise HTTPException(403, "Không có quyền truy cập lớp học này")
 
 
+async def _ensure_file_in_class(db, class_id, file_id):
+    """A dataset must belong to the class it is assigned to, or one teacher could
+    hand another class's files to their own students."""
+    if file_id is None:
+        return
+    r = await db.execute(select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id))
+    if r.scalar_one_or_none() is None:
+        raise HTTPException(400, "Bộ dữ liệu không thuộc lớp học này")
+
+
 # ─── schemas ────────────────────────────────────────────────────
 
 class AssignmentCreate(BaseModel):
@@ -78,7 +88,7 @@ class AssignmentCreate(BaseModel):
     max_score: float = 10.0
     deadline: datetime
     allow_resubmit: bool = True
-    group_size: int = 1
+    group_size: int = Field(1, ge=1, le=20)
     allow_sharing: bool = False
     answer_key: Optional[dict] = None
     grading_config: Optional[dict] = None
@@ -87,10 +97,13 @@ class AssignmentCreate(BaseModel):
 class AssignmentUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    assignment_type: Optional[str] = None
     deadline: Optional[datetime] = None
     max_score: Optional[float] = None
     allow_resubmit: Optional[bool] = None
     allow_sharing: Optional[bool] = None
+    file_id: Optional[uuid.UUID] = None
+    group_size: Optional[int] = Field(None, ge=1, le=20)
     answer_key: Optional[dict] = None
     grading_config: Optional[dict] = None
 
@@ -118,7 +131,7 @@ class AssignmentResponse(BaseModel):
 
 def _to_response(a: Assignment, *, with_key: bool) -> AssignmentResponse:
     questions = [
-        {k: q[k] for k in ("id", "label", "type", "points") if k in q}
+        {k: q[k] for k in ("id", "label", "type", "points", "comment", "comment_hint") if k in q}
         for q in (a.answer_key or {}).get("questions", [])
     ]
     return AssignmentResponse(
@@ -185,9 +198,12 @@ async def create_assignment(
     roles = await _get_user_roles_set(db, current_user.id)
     if "admin" not in roles and cls.teacher_id != current_user.id:
         raise HTTPException(403, "Chỉ giáo viên mới tạo được bài tập")
+    if body.assignment_type not in ("homework", "project", "exam"):
+        raise HTTPException(400, "Loại bài tập không hợp lệ")
     if body.assignment_type == "exam":
         body.allow_sharing = False
         body.allow_resubmit = False
+    await _ensure_file_in_class(db, class_id, body.file_id)
     a = Assignment(
         class_id=class_id,
         title=body.title,
@@ -235,6 +251,12 @@ async def update_assignment(
     updates = body.model_dump(exclude_unset=True)
     if "description" in updates:
         updates["description"] = sanitize_md(updates["description"])
+    if "file_id" in updates:
+        await _ensure_file_in_class(db, class_id, updates["file_id"])
+    # chk_exam_no_sharing / chk_exam_no_resubmit reject the row otherwise, same as on create
+    if updates.get("assignment_type") == "exam":
+        updates["allow_sharing"] = False
+        updates["allow_resubmit"] = False
     # the marks students saw must follow the rules they were graded against
     criteria_changed = any(
         field in updates and updates[field] != getattr(a, field)

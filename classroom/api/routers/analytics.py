@@ -119,17 +119,14 @@ async def my_analytics(
     )
     total_assignments = len(assignments_r.scalars().all())
 
-    graded = [(s, a) for s, a in rows if s.score is not None]
-    scores = [float(s.score) for s, _ in graded]
+    # Students see when they handed in, never the mark; the teacher publishes
+    # điểm outside the app.
     recent = [
         {
             "assignment_id": str(a.id),
             "title": a.title,
             "class_id": str(a.class_id),
             "submitted_at": s.submitted_at,
-            "score": float(s.score) if s.score is not None else None,
-            "max_score": float(a.max_score),
-            "mistake_count": (s.auto_grade or {}).get("mistake_count"),
         }
         for s, a in sorted(rows, key=lambda r: r[0].submitted_at, reverse=True)[:10]
     ]
@@ -137,7 +134,6 @@ async def my_analytics(
     return {
         "assignments_completed": len(rows),
         "assignments_total": total_assignments,
-        "average_score": round(sum(scores) / len(scores), 2) if scores else None,
         "skills": _mastery_rows([s for s, _ in rows]),
         "recent": recent,
     }

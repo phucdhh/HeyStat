@@ -44,6 +44,9 @@ body {
 /* ── Typography ─────────────────────────────────────────── */
 h1, h2, h3 { color: var(--color-text); }
 
+/* A long $$…$$ formula must not widen the page; it scrolls inside its own row. */
+.katex-display { overflow: auto hidden; }
+
 /* ── Buttons ────────────────────────────────────────────── */
 .btn-primary {
   background: var(--color-primary);
