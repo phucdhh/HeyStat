@@ -169,6 +169,12 @@ async def preview_file_schema(
 
     from services.omv_reader import grading_schema, parse_omv
 
+    # A .sav/.csv/.xlsx dataset opens fine in jamovi but holds no analyses — only a
+    # saved jamovi workbook does. Answering empty lets the form fall back to typing
+    # the names in; 422 would read as "your data file is broken", which it is not.
+    if Path(cf.file_name).suffix.lower() != ".omv":
+        return {"file_name": cf.file_name, "analyses": []}
+
     full_path = Path(settings.upload_dir) / cf.file_path
     if not full_path.is_file():
         raise HTTPException(404, "Tệp không tồn tại trên server")

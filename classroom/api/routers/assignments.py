@@ -357,6 +357,10 @@ async def get_grading_schema(
     from config import get_settings
     from services.omv_reader import grading_schema, parse_omv
 
+    # see preview_file_schema: a plain .sav/.csv dataset has no analyses to offer
+    if Path(cf.file_name).suffix.lower() != ".omv":
+        return {"file_name": cf.file_name, "analyses": []}
+
     full_path = Path(get_settings().upload_dir) / cf.file_path
     if not full_path.exists():
         raise HTTPException(404, "Bộ dữ liệu không tồn tại trên server")
