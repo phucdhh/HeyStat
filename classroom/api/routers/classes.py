@@ -389,7 +389,8 @@ async def list_students(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _roster(db, class_id, current_user)
+    students, _ = await _roster(db, class_id, current_user)
+    return students
 
 
 async def _roster(
