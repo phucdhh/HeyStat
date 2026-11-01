@@ -144,9 +144,11 @@
           <select v-model="q.type" title="Loại đáp án">
             <option value="number">Số (± sai số)</option>
             <option value="text">Chữ (nhiều đáp án đúng)</option>
+            <option value="essay">Tự luận (thầy/cô chấm tay)</option>
           </select>
-          <input v-model="q.answer" class="mid"
+          <input v-if="q.type !== 'essay'" v-model="q.answer" class="mid"
                  :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
+          <span v-else class="meta grow">Học viên viết bài; phần này thầy/cô đọc và cho điểm.</span>
           <input v-if="q.type === 'number'" v-model.number="q.tolerance" class="num" type="number" step="any" title="Sai số cho phép" />
           <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm" />
           <button class="btn-sm danger" type="button" @click="questions.splice(i, 1)">✕</button>
@@ -204,7 +206,7 @@ import {
 
 const TYPES = [
   { value: 'homework', label: 'Bài tập về nhà' },
-  { value: 'project', label: 'Đồ án / dự án' },
+  { value: 'project', label: 'Thực hành' },
   { value: 'exam', label: 'Kiểm tra' },
 ]
 

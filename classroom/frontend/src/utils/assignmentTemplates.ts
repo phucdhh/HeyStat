@@ -224,5 +224,5 @@ export function descriptionOf(b: AssignmentBlueprint) {
 /** The list only stores homework/project/exam, so that is what the chip can say. */
 export const kindLabel = (a: any): string =>
   a?.assignment_type === 'exam' ? 'Kiểm tra'
-    : a?.assignment_type === 'project' ? 'Đồ án'
+    : a?.assignment_type === 'project' ? 'Thực hành'
     : 'Bài tập'

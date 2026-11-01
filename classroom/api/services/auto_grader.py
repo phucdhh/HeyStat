@@ -140,6 +140,24 @@ def _grade_answers(answer_key: dict, answers: Optional[dict]) -> list[dict]:
         qtype = question.get("type", "number")
         expected = question.get("answer")
 
+        if qtype == "essay":
+            # Prose has nothing to compare against. Keep the points in the total so
+            # the auto score reads as "not graded yet" instead of "full marks", but
+            # do not call the student wrong about it.
+            items.append({
+                "id": qid,
+                "kind": "answer",
+                "label": question.get("label", qid),
+                "passed": None,
+                "pending": True,
+                "awarded": 0.0,
+                "points": points,
+                "expected": None,
+                "actual": given,
+                "explanation": "Câu tự luận — thầy/cô chấm bằng tay.",
+            })
+            continue
+
         if given in (None, ""):
             passed, why = False, "Bạn bỏ trống câu này."
         elif qtype == "number":
@@ -187,7 +205,8 @@ def auto_grade(
 
     max_score = float(assignment.max_score)
     scaled = round(earned / possible * max_score, 2)
-    mistakes = [i for i in items if not i["passed"]]
+    mistakes = [i for i in items if not i["passed"] and not i.get("pending")]
+    pending = [i for i in items if i.get("pending")]
 
     feedback_lines = [
         f"Tự động chấm: {earned}/{possible} điểm tiêu chí → {scaled}/{max_score} điểm bài tập."
@@ -195,8 +214,11 @@ def auto_grade(
     if mistakes:
         feedback_lines.append("Các điểm cần sửa:")
         feedback_lines += [f"- {i['label']}: {i['explanation']}" for i in mistakes if i["explanation"]]
-    else:
+    elif not pending:
         feedback_lines.append("Tất cả tiêu chí đều đạt.")
+    if pending:
+        feedback_lines.append(
+            f"Còn {len(pending)} câu tự luận chờ thầy/cô chấm tay, chưa tính vào điểm trên.")
 
     return {
         "score": scaled,

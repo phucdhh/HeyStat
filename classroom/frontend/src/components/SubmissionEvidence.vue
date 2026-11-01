@@ -21,8 +21,8 @@
     <div v-if="items.length" class="items">
       <h4>Kết quả chấm tiêu chí</h4>
       <ul>
-        <li v-for="it in items" :key="it.id" :class="it.passed ? 'ok' : 'bad'">
-          <strong>{{ it.passed ? '✓' : '✗' }} {{ it.label }}</strong>
+        <li v-for="it in items" :key="it.id" :class="it.passed ? 'ok' : it.pending ? 'muted' : 'bad'">
+          <strong>{{ it.passed ? '✓' : it.pending ? '·' : '✗' }} {{ it.label }}</strong>
           <span>
             {{ it.explanation }}
             <em v-if="it.actual !== null && it.actual !== undefined">· bài làm: {{ fmt(it.actual) }}</em>
@@ -62,7 +62,7 @@ const answers = computed(() => {
       label: graded[id]?.label ?? id,
       given: given[id],
       note: given[id + NOTE_SUFFIX],
-      passed: graded[id] ? !!graded[id].passed : null,
+      passed: graded[id] ? (graded[id].pending ? null : !!graded[id].passed) : null,
       awarded: graded[id]?.awarded,
       points: graded[id]?.points,
     }))

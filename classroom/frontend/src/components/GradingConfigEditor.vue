@@ -25,8 +25,10 @@
         <select v-model="q.type" title="Loại đáp án">
           <option value="number">Số (± sai số)</option>
           <option value="text">Chữ (nhiều đáp án đúng)</option>
+          <option value="essay">Tự luận (thầy/cô chấm tay)</option>
         </select>
-        <input v-model="q.answer" class="mid" :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
+        <input v-if="q.type !== 'essay'" v-model="q.answer" class="mid" :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
+        <span v-else class="grow muted">Học viên viết bài; phần này thầy/cô đọc và cho điểm.</span>
         <input v-if="q.type === 'number'" v-model.number="q.tolerance" class="num" type="number" step="any" title="Sai số cho phép" />
         <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm" />
         <button class="btn-sm danger" @click="questions.splice(i, 1)">✕</button>
@@ -248,6 +250,7 @@ h4 { margin-top: 1.1rem; font-size: 0.9rem; }
 input, select { padding: 0.32rem 0.5rem; border: 1px solid var(--amber-300); border-radius: 5px; font-size: 0.82rem; }
 input { width: 9rem; }
 .grow { flex: 1; min-width: 12rem; }
+.muted { color: var(--color-text-muted); font-size: 0.8rem; }
 .mid { width: 13rem; }
 .chk { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--amber-800); white-space: nowrap; }
 .chk input { width: auto; }

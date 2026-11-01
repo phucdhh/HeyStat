@@ -24,3 +24,36 @@ def test_every_lesson_kind_has_a_matching_resource_to_lead_with():
 
     assert LESSON_TYPES == ("standard", "practical", "video", "reading")
     assert {"data_file", "video", "pdf", "link"} == set(RESOURCE_TYPES)
+
+
+def test_deleting_a_lesson_detaches_its_quiz_instead_of_failing(monkeypatch):
+    """quizzes_lesson_id_fkey is NO ACTION, so Postgres would refuse to delete a
+    lesson that still has a quiz parked under it and the new delete button would
+    500. The quiz is listed and graded in its own tab, so it outlives the lesson."""
+    import asyncio
+    import uuid
+    from types import SimpleNamespace
+
+    from routers import lessons
+
+    statements = []
+    lesson = SimpleNamespace(id=uuid.uuid4())
+
+    class _Db:
+        async def execute(self, statement):
+            statements.append(str(statement))
+            return SimpleNamespace(scalar_one_or_none=lambda: lesson)
+
+        async def delete(self, obj):
+            statements.append(("delete", obj))
+
+    async def access(_db, _class_id, _user):
+        return SimpleNamespace(teacher_id=uuid.uuid4()), "teacher"
+
+    monkeypatch.setattr(lessons, "_class_access", access)
+    asyncio.run(lessons.delete_lesson(
+        uuid.uuid4(), lesson.id, SimpleNamespace(id=uuid.uuid4()), _Db()))
+
+    assert statements[0].startswith("SELECT lessons.id")
+    assert statements[1].startswith("UPDATE quizzes SET lesson_id")
+    assert statements[2] == ("delete", lesson)

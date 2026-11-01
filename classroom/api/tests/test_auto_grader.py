@@ -127,3 +127,21 @@ def test_missing_omv_is_reported_instead_of_crashing():
     result = auto_grade(assignment(grading_config=config), None, None)
     assert result["items"][0]["passed"] is None
     assert result["score"] == 0.0
+
+
+def test_an_essay_question_waits_for_the_teacher_instead_of_reading_as_wrong():
+    key = {"questions": [
+        {"id": "q1", "label": "Giá trị trung bình", "type": "number",
+         "answer": 3.43, "tolerance": 0.01, "points": 6},
+        {"id": "q2", "label": "Diễn giải kết quả", "type": "essay", "points": 4},
+    ]}
+    result = auto_grade(assignment(answer_key=key), None,
+                        {"q1": 3.43, "q2": "p < .05 nên khác có ý nghĩa"})
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id["q1"]["passed"] is True
+    assert by_id["q2"]["passed"] is None and by_id["q2"]["pending"] is True
+    assert by_id["q2"]["awarded"] == 0.0
+    assert by_id["q2"]["actual"] == "p < .05 nên khác có ý nghĩa"
+    assert result["possible"] == 10.0, "the essay keeps its weight in the total"
+    assert result["mistake_count"] == 0, "waiting for a human is not a mistake"
+    assert "chờ thầy/cô chấm" in result["feedback"]

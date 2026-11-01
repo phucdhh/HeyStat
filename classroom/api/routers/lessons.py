@@ -5,11 +5,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from pydantic import BaseModel
 
 from database import get_db
-from models import Class, Lesson, LessonResource, Enrollment, User, UserRole, Role
+from models import Class, Lesson, LessonResource, Enrollment, Quiz, User, UserRole, Role
 from auth.deps import get_current_user
 from services.embed_validator import is_allowed_embed_url, transform_to_embed_url
 from services.markdown import sanitize_md
@@ -261,6 +261,10 @@ async def delete_lesson(
     lesson = r.scalar_one_or_none()
     if not lesson:
         raise HTTPException(404)
+    # quizzes_lesson_id_fkey is NO ACTION, so a quiz parked under this lesson would
+    # abort the delete. The quiz is its own object in its own tab: detach it and
+    # let it outlive the lesson it was attached to.
+    await db.execute(update(Quiz).where(Quiz.lesson_id == lesson_id).values(lesson_id=None))
     await db.delete(lesson)
 
 

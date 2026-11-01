@@ -255,7 +255,7 @@ function fmtDate(iso: string) {
 }
 
 function typeLabel(t: string) {
-  return { homework: 'Bài tập về nhà', project: 'Đồ án', exam: 'Kiểm tra' }[t] ?? t
+  return { homework: 'Bài tập về nhà', project: 'Thực hành', exam: 'Kiểm tra' }[t] ?? t
 }
 
 function statusLabel(s: string) {

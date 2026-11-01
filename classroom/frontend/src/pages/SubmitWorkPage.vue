@@ -50,6 +50,8 @@
             <div v-for="q in questions" :key="q.id" class="question">
               <label>{{ q.label }}<span v-if="q.points" class="pts">{{ q.points }}đ</span></label>
               <input v-if="q.type === 'number'" v-model="answers[q.id]" type="number" step="any" />
+              <textarea v-else-if="q.type === 'essay'" v-model="answers[q.id]" rows="7" class="note"
+                        placeholder="Viết câu trả lời của bạn ở đây…" />
               <input v-else v-model="answers[q.id]" type="text" />
               <label v-if="q.comment" class="note-label">{{ q.comment_hint || 'Lời giải / giải thích' }}</label>
               <textarea v-if="q.comment" v-model="answers[noteKey(q.id)]" rows="4" class="note"

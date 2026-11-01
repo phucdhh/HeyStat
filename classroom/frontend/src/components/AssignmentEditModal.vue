@@ -24,7 +24,7 @@
         <label>Loại bài tập</label>
         <select class="form-input" v-model="form.assignment_type">
           <option value="homework">Bài tập về nhà</option>
-          <option value="project">Đồ án / Dự án</option>
+          <option value="project">Thực hành</option>
           <option value="exam">Kiểm tra</option>
         </select>
       </div>

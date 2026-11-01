@@ -32,6 +32,7 @@
           <span v-if="a.file_id" class="meta">📊 có bộ dữ liệu</span>
           <span class="score-tag">{{ a.max_score }} điểm</span>
           <button v-if="auth.isTeacher" class="btn-icon" @click="openEditAssignment(a)" title="Sửa">✏️</button>
+          <button v-if="auth.isTeacher" class="btn-icon" @click="deleteAssignment(a)" title="Xoá">🗑️</button>
         </div>
       </div>
 
@@ -52,6 +53,7 @@
             <button v-if="l.is_published" class="btn-icon pub" title="Ngừng công khai" @click="togglePublish(l)">🌐</button>
             <button v-else class="btn-icon draft" title="Công khai" @click="togglePublish(l)">🔒</button>
             <button class="btn-icon" title="Sửa" @click="openEditLesson(l)">✏️</button>
+            <button class="btn-icon" title="Xoá" @click="deleteLesson(l)">🗑️</button>
           </template>
         </div>
       </div>
@@ -390,6 +392,36 @@ async function deleteFile(fileId: string) {
   } catch (e: any) {
     const d = e?.response?.data?.detail
     alert(Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Lỗi khi xoá file')
+  }
+}
+
+async function deleteLesson(l: any) {
+  if (!confirm(`Xoá bài học “${l.title}”?\n\nToàn bộ tài nguyên đính kèm cũng bị xoá.`)) return
+  try {
+    await api.delete(`/classes/${classId}/lessons/${l.id}`)
+    await reloadLessons()
+  } catch (e: any) {
+    alert(e?.response?.data?.detail ?? 'Lỗi khi xoá bài học')
+  }
+}
+
+// The server cascades to the submissions, so the only warning a teacher gets is
+// this one — hence the count, fetched before asking rather than after deleting.
+async function deleteAssignment(a: any) {
+  let n = 0
+  try {
+    const { data } = await api.get(`/assignments/${a.id}/submissions`)
+    n = data.length
+  } catch { /* the plain warning still stops an accidental click */ }
+  const warning = n
+    ? `Xoá bài tập “${a.title}”?\n\n${n} bài nộp của học viên sẽ mất theo, không phục hồi được.`
+    : `Xoá bài tập “${a.title}”?`
+  if (!confirm(warning)) return
+  try {
+    await api.delete(`/classes/${classId}/assignments/${a.id}`)
+    assignments.value = assignments.value.filter(x => x.id !== a.id)
+  } catch (e: any) {
+    alert(e?.response?.data?.detail ?? 'Lỗi khi xoá bài tập')
   }
 }
 
