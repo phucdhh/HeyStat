@@ -1,1 +1,0 @@
-import{a as s}from"./client-B-4ZX1dE.js";async function r(a,c){var t;const o=await s.get(a,{responseType:"blob"}),d=((t=/filename="?([^";]+)"?/.exec(o.headers["content-disposition"]??""))==null?void 0:t[1])||c,n=URL.createObjectURL(o.data),e=document.createElement("a");e.href=n,e.download=d,document.body.appendChild(e),e.click(),e.remove(),URL.revokeObjectURL(n)}export{r as d};

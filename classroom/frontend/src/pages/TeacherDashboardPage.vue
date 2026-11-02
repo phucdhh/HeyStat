@@ -31,7 +31,7 @@
           </div>
           <div class="cls-actions">
             <button class="btn-sm" @click="exportGrades(cls.id)">Xuất bảng điểm</button>
-            <button class="btn-sm secondary" @click="regenerateKey(cls)">📋 Lấy mã lớp</button>
+            <button class="btn-sm secondary" @click="showKey(cls)">🔑 Mã lớp</button>
             <button v-if="cls.status === 'draft'" class="btn-sm activate" @click="toggleStatus(cls, 'active')">✅ Kích hoạt</button>
             <button v-else-if="cls.status === 'active'" class="btn-sm close-btn" @click="toggleStatus(cls, 'draft')">🔒 Đóng tạm</button>
           </div>
@@ -65,14 +65,16 @@
 
     <div v-if="copiedMsg" class="toast">{{ copiedMsg }}</div>
     <!-- Key display overlay -->
-    <div v-if="displayedKey" class="modal-overlay" @click.self="displayedKey = ''">
+    <div v-if="keyClass" class="modal-overlay" @click.self="keyClass = null">
       <div class="modal key-modal">
-        <h2>Mã tham gia lớp</h2>
-        <p class="key-note">Chia sẻ mã này cho học viên. Sau khi đóng cửa sổ bạn không thể xem lại mã này.</p>
-        <div class="key-display">{{ displayedKey }}</div>
+        <h2>Mã lớp: {{ keyClass.title }}</h2>
+        <p class="key-note" v-if="displayedKey">Học viên nhập mã này ở Lớp học → + Tham gia lớp.</p>
+        <p class="key-note" v-else>Lớp này tạo trước khi có mã đọc lại được, nên chưa hiện mã cũ. Bấm “Đổi mã” để lấy mã mới rồi gửi cho học viên.</p>
+        <div class="key-display">{{ displayedKey || '—' }}</div>
         <div class="modal-actions">
-          <button class="btn-primary" @click="doCopyKey">📋 Sao chép</button>
-          <button class="btn-secondary" @click="displayedKey = ''">Đóng</button>
+          <button class="btn-primary" :disabled="!displayedKey" @click="doCopyKey">📋 Sao chép</button>
+          <button class="btn-secondary" @click="rotateKey">🔄 Đổi mã</button>
+          <button class="btn-secondary" @click="keyClass = null">Đóng</button>
         </div>
       </div>
     </div>
@@ -94,6 +96,7 @@ const progressLoading = ref(false)
 const showCreate = ref(false)
 const copiedMsg = ref('')
 const displayedKey = ref('')
+const keyClass = ref<any>(null)
 
 function fmtDate(iso: string) {
   if (!iso) return ''
@@ -131,12 +134,29 @@ async function toggleStatus(cls: any, newStatus: string) {
   } catch {}
 }
 
-async function regenerateKey(cls: any) {
+async function showKey(cls: any) {
   try {
-    const { data } = await api.post(`/classes/${cls.id}/regenerate-key`)
-    displayedKey.value = data.enrollment_key
+    const { data } = await api.get(`/classes/${cls.id}/enrollment-code`)
+    displayedKey.value = data.enrollment_code ?? ''
+    keyClass.value = cls
   } catch {
     copiedMsg.value = 'Không lấy được mã lớp'
+    setTimeout(() => (copiedMsg.value = ''), 2000)
+  }
+}
+
+async function rotateKey() {
+  const cls = keyClass.value
+  if (!cls) return
+  const warning = displayedKey.value
+    ? `Đổi mã lớp “${cls.title}”?\n\nMã ${displayedKey.value} hết hiệu lực ngay; học viên đã vào lớp vẫn ở trong lớp.`
+    : `Lấy mã lớp mới cho “${cls.title}”?`
+  if (!confirm(warning)) return
+  try {
+    const { data } = await api.put(`/classes/${cls.id}/enrollment-code`, { enrollment_code: null })
+    displayedKey.value = data.enrollment_code
+  } catch {
+    copiedMsg.value = 'Không đổi được mã lớp'
     setTimeout(() => (copiedMsg.value = ''), 2000)
   }
 }

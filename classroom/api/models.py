@@ -72,6 +72,7 @@ class Class(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     enrollment_key: Mapped[str] = mapped_column(String(100), nullable=False)  # bcrypt hash
+    enrollment_code: Mapped[Optional[str]] = mapped_column(String(16), unique=True)  # readable copy of the same code
     max_students: Mapped[int] = mapped_column(Integer, default=200)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

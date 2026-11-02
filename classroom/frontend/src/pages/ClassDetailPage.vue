@@ -95,6 +95,34 @@
           </button>
           <span class="meta">Bảng CSV gồm từng bài tập một cột, mở trực tiếp bằng Excel.</span>
         </div>
+
+        <!-- The code students type to get in, shown where the teacher is already
+             looking at the roster. It used to appear once and then nowhere. -->
+        <div class="code-box">
+          <div class="cb-head">
+            <span class="cb-label">Mã lớp</span>
+            <span v-if="enrollmentCode" class="cb-code">{{ enrollmentCode }}</span>
+            <span v-else class="cb-code unset">chưa đặt mã</span>
+            <button class="btn-sm" :disabled="!enrollmentCode" @click="copyCode">
+              {{ codeCopied ? '✓ Đã chép mã' : '📋 Sao chép mã' }}
+            </button>
+            <button class="btn-sm secondary" @click="openCodeEditor">✏️ Sửa mã</button>
+          </div>
+          <div v-if="showCodeEditor" class="cb-edit">
+            <input class="form-input" v-model="codeDraft" maxlength="16" placeholder="VD: XTSK26"
+                   @keyup.enter="saveCode" @keyup.esc="showCodeEditor = false" />
+            <button class="btn-primary" :disabled="savingCode" @click="saveCode">
+              {{ savingCode ? 'Đang lưu…' : 'Lưu mã' }}
+            </button>
+            <button class="btn-secondary" @click="showCodeEditor = false">Huỷ</button>
+          </div>
+          <p v-if="codeError" class="error">{{ codeError }}</p>
+          <p class="hint">
+            Học viên nhập mã này ở <strong>Lớp học → + Tham gia lớp</strong>. Mã gồm 4–16 chữ và số,
+            để trống ô sửa mã sẽ lấy mã ngẫu nhiên. Đổi mã làm mã cũ hết hiệu lực, còn học viên đã vào
+            lớp thì vẫn ở trong lớp.
+          </p>
+        </div>
         <div v-if="!members.length" class="empty">Chưa có học viên.</div>
         <template v-else>
           <div class="roster-stats">
@@ -221,6 +249,12 @@ const lessons = ref<any[]>([])
 const quizzes = ref<any[]>([])
 const files = ref<any[]>([])
 const members = ref<any[]>([])
+const enrollmentCode = ref('')
+const showCodeEditor = ref(false)
+const codeDraft = ref('')
+const savingCode = ref(false)
+const codeCopied = ref(false)
+const codeError = ref('')
 const uploadingFile = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const activeTab = ref('lessons')
@@ -275,6 +309,38 @@ async function exportRoster() {
   } catch {
     alert('Không xuất được CSV — hãy thử lại sau ít phút')
   } finally { exporting.value = false }
+}
+
+// ── Class code ──────────────────────────────────────
+function openCodeEditor() {
+  codeError.value = ''
+  codeDraft.value = enrollmentCode.value
+  showCodeEditor.value = true
+}
+
+async function saveCode() {
+  savingCode.value = true
+  codeError.value = ''
+  try {
+    const { data } = await api.put(`/classes/${classId}/enrollment-code`, {
+      enrollment_code: codeDraft.value.trim() || null,
+    })
+    enrollmentCode.value = data.enrollment_code
+    showCodeEditor.value = false
+  } catch (e: any) {
+    const d = e?.response?.data?.detail
+    codeError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Không đổi được mã lớp'
+  } finally { savingCode.value = false }
+}
+
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(enrollmentCode.value)
+    codeCopied.value = true
+    setTimeout(() => { codeCopied.value = false }, 2000)
+  } catch {
+    codeError.value = 'Trình duyệt không cho sao chép — hãy bôi đen mã và tự copy'
+  }
 }
 
 // ── Assignment creation ─────────────────────────────
@@ -446,8 +512,12 @@ onMounted(async () => {
     quizzes.value = quizRes.data
     files.value = fileRes.data
     if (auth.isTeacher) {
-      const memberRes = await api.get(`/classes/${classId}/students`)
+      const [memberRes, codeRes] = await Promise.all([
+        api.get(`/classes/${classId}/students`),
+        api.get(`/classes/${classId}/enrollment-code`),
+      ])
       members.value = memberRes.data.sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'vi'))
+      enrollmentCode.value = codeRes.data.enrollment_code ?? ''
     }
   } finally { loading.value = false }
 })
@@ -471,6 +541,19 @@ onMounted(async () => {
 .item-title:hover { color: var(--amber-900); text-decoration: underline; }
 .item-title.link { cursor: pointer; }
 .meta { font-size: 0.8rem; color: var(--color-text-muted); }
+.code-box { margin: 0 0 1.25rem; padding: 0.75rem 0.9rem; background: var(--amber-50); border: 1px solid var(--amber-200); border-radius: 9px; }
+.cb-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.cb-label { font-size: 0.85rem; font-weight: 700; color: var(--amber-800); }
+.cb-code { font-family: monospace; font-size: 1.15rem; font-weight: 800; letter-spacing: 0.14em; color: var(--amber-900); background: #fff; border: 1px dashed var(--amber-400); border-radius: 6px; padding: 0.15rem 0.55rem; }
+.cb-code.unset { font-family: inherit; font-size: 0.85rem; font-weight: 600; letter-spacing: 0; color: var(--color-text-muted); border-style: solid; }
+.btn-sm { border: 1px solid var(--amber-300); background: #fff; color: var(--amber-800); font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; }
+.btn-sm:hover:not(:disabled) { background: var(--amber-100); }
+.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm.secondary { background: var(--amber-100); }
+.cb-edit { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.cb-edit .form-input { max-width: 16rem; }
+.code-box .hint { font-size: 0.78rem; color: var(--color-text-muted); margin: 0.6rem 0 0; }
+.code-box .error { margin: 0.6rem 0 0; }
 .score-tag { font-size: 0.78rem; background: var(--amber-100); color: var(--amber-800); padding: 0.1rem 0.5rem; border-radius: 8px; font-weight: 600; }
 .empty { color: var(--color-text-muted); padding: 1.5rem 0; font-size: 0.9rem; }
 .table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px var(--color-card-shadow); }

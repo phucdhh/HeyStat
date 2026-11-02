@@ -38,6 +38,7 @@ class ClassCreate(BaseModel):
     max_students: int = 200
     starts_at: datetime
     ends_at: datetime
+    enrollment_code: Optional[str] = None
 
 
 class ClassUpdate(BaseModel):
@@ -60,7 +61,6 @@ class ClassResponse(BaseModel):
     ends_at: datetime
     status: str
     created_at: datetime
-    enrollment_key: Optional[str] = None  # only for teacher/admin
 
     model_config = {"from_attributes": True}
 
@@ -109,6 +109,34 @@ class StudentResponse(BaseModel):
 def _generate_enrollment_key() -> str:
     chars = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(chars) for _ in range(8))
+
+
+def _normalize_code(raw: Optional[str]) -> Optional[str]:
+    """A teacher typing "xtsk 26" means XTSK26, so spaces and dashes carry no meaning."""
+    if raw is None:
+        return None
+    code = re.sub(r"[\s\-_.]", "", raw).upper()
+    if not re.fullmatch(r"[A-Z0-9]{4,16}", code):
+        raise HTTPException(
+            status_code=400,
+            detail="Mã lớp phải dài 4–16 ký tự, chỉ gồm chữ Hoa A–Z và số 0–9",
+        )
+    return code
+
+
+async def _code_taken(db: AsyncSession, code: str, exclude: Optional[uuid.UUID] = None) -> bool:
+    q = select(Class.id).where(Class.enrollment_code == code)
+    if exclude:
+        q = q.where(Class.id != exclude)
+    return (await db.execute(q)).scalar_one_or_none() is not None
+
+
+async def _new_code(db: AsyncSession) -> str:
+    for _ in range(5):
+        code = _generate_enrollment_key()
+        if not await _code_taken(db, code):
+            return code
+    raise HTTPException(status_code=500, detail="Không sinh được mã lớp, hãy thử lại")
 
 
 async def _get_class_or_404(db: AsyncSession, class_id: uuid.UUID) -> Class:
@@ -189,8 +217,6 @@ async def list_classes(
             starts_at=c.starts_at, ends_at=c.ends_at, status=c.status,
             created_at=c.created_at,
         )
-        if "admin" in roles or c.teacher_id == current_user.id:
-            d.enrollment_key = None  # raw key not stored; teacher sees it only after creation
         responses.append(d)
     return responses
 
@@ -203,13 +229,15 @@ async def create_class(
 ):
     if body.ends_at <= body.starts_at:
         raise HTTPException(status_code=400, detail="ends_at phải sau starts_at")
-    plain_key = _generate_enrollment_key()
-    hashed_key = _hash_key(plain_key)
+    code = _normalize_code(body.enrollment_code) or await _new_code(db)
+    if await _code_taken(db, code):
+        raise HTTPException(status_code=400, detail=f"Mã {code} đã có lớp khác đang dùng")
     cls = Class(
         teacher_id=current_user.id,
         title=body.title,
         description=body.description,
-        enrollment_key=hashed_key,
+        enrollment_key=_hash_key(code),
+        enrollment_code=code,
         max_students=body.max_students,
         starts_at=body.starts_at,
         ends_at=body.ends_at,
@@ -220,7 +248,7 @@ async def create_class(
     return {
         "id": str(cls.id),
         "title": cls.title,
-        "enrollment_key": plain_key,  # shown once
+        "enrollment_code": code,
         "status": cls.status,
     }
 
@@ -300,8 +328,8 @@ async def enroll(
     if count >= cls.max_students:
         raise HTTPException(status_code=400, detail="Lớp học đã đầy")
 
-    if not _verify_key(body.enrollment_key, cls.enrollment_key):
-        raise HTTPException(status_code=400, detail="Enrollment key không đúng")
+    if not _verify_key(_normalize_code(body.enrollment_key), cls.enrollment_key):
+        raise HTTPException(status_code=400, detail="Mã lớp không đúng")
 
     existing = await db.execute(
         select(Enrollment).where(Enrollment.class_id == class_id, Enrollment.user_id == current_user.id)
@@ -522,17 +550,46 @@ async def remove_student(
     enr.status = "dropped"
 
 
-@router.post("/{class_id}/regenerate-key", response_model=dict)
-async def regenerate_key(
+@router.get("/{class_id}/enrollment-code", response_model=dict)
+async def read_enrollment_code(
     class_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """The code students type in, for the teacher who owns the class.
+
+    Classes created before enrollment_code existed hold only the bcrypt hash,
+    so for those the teacher has to set a code once.
+    """
     cls = await _get_class_or_404(db, class_id)
     await _require_teacher_owns(db, cls, current_user)
-    plain_key = _generate_enrollment_key()
-    cls.enrollment_key = _hash_key(plain_key)
-    return {"enrollment_key": plain_key}
+    return {"enrollment_code": cls.enrollment_code}
+
+
+class EnrollmentCodeBody(BaseModel):
+    enrollment_code: Optional[str] = None
+
+
+@router.put("/{class_id}/enrollment-code", response_model=dict)
+async def set_enrollment_code(
+    class_id: uuid.UUID,
+    body: EnrollmentCodeBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the class code, or generate a random one when the body is empty.
+
+    enrollment_key is what a join is checked against and enrollment_code is the
+    copy the teacher reads back, so both move together or a student would be
+    turned away with the code shown on their teacher's screen."""
+    cls = await _get_class_or_404(db, class_id)
+    await _require_teacher_owns(db, cls, current_user)
+    code = _normalize_code(body.enrollment_code) or await _new_code(db)
+    if await _code_taken(db, code, exclude=class_id):
+        raise HTTPException(status_code=400, detail=f"Mã {code} đã có lớp khác đang dùng")
+    cls.enrollment_code = code
+    cls.enrollment_key = _hash_key(code)
+    return {"enrollment_code": code}
 
 
 class JoinRequest(BaseModel):
@@ -545,16 +602,21 @@ async def join_by_key(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Join a class using only the enrollment key (no class_id needed)."""
-    # Find all active classes and test key against each
-    r = await db.execute(select(Class).where(Class.status == "active"))
-    classes = r.scalars().all()
+    """Join a class using only the enrollment code (no class_id needed)."""
+    code = _normalize_code(body.enrollment_key)
+    matched = (await db.execute(
+        select(Class).where(Class.status == "active", Class.enrollment_code == code)
+    )).scalar_one_or_none()
 
-    matched = None
-    for cls in classes:
-        if cls.enrollment_key and _verify_key(body.enrollment_key, cls.enrollment_key):
-            matched = cls
-            break
+    if matched is None:
+        # A class with no readable copy can only be matched against its hash.
+        r = await db.execute(select(Class).where(
+            Class.status == "active", Class.enrollment_code.is_(None)
+        ))
+        for cls in r.scalars():
+            if cls.enrollment_key and _verify_key(code, cls.enrollment_key):
+                matched = cls
+                break
 
     if matched is None:
         raise HTTPException(status_code=400, detail="Mã lớp không đúng hoặc lớp đã đóng")

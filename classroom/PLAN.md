@@ -526,7 +526,8 @@ Tất cả request (trừ `/auth/*`) cần header `Authorization: Bearer <access
 | DELETE | `/classes/{id}/enroll` | Student | Rời lớp |
 | GET    | `/classes/{id}/students` | Teacher/Admin | Danh sách sinh viên |
 | DELETE | `/classes/{id}/students/{userId}` | Teacher/Admin | Xoá sinh viên khỏi lớp |
-| POST   | `/classes/{id}/regenerate-key` | Teacher(owner) | Tạo lại enrollment key |
+| GET    | `/classes/{id}/enrollment-code` | Teacher(owner) | Xem lại mã lớp |
+| PUT    | `/classes/{id}/enrollment-code` | Teacher(owner) | Đặt mã theo ý hoặc lấy mã ngẫu nhiên |
 
 ### 5.4 Class Files
 
@@ -729,11 +730,11 @@ Khi làm bài:
 
 ### 7.1 Enrollment Key
 
-- Khi tạo lớp, server tự sinh key dạng: `[A-Z0-9]{8}` (ví dụ: `STAT2025`)
-- Teacher xem key dạng plain text, có thể copy hoặc regenerate
-- Server lưu dạng **bcrypt hash** trong cột `enrollment_key`
-- Khi User nhập key: so sánh `bcrypt.compare(inputKey, hash)`
-- Một key chỉ hợp lệ khi lớp ở trạng thái `active` và chưa đầy `max_students`
+- Khi tạo lớp, server sinh mã `[A-Z0-9]{8}`, giáo viên có thể tự đặt mã 4–16 ký tự chữ Hoa + số (ví dụ: `XTSK26`)
+- Mã lưu hai bản: `enrollment_key` là **bcrypt hash** dùng để đối chiếu khi vào lớp, `enrollment_code` là bản đọc được để giáo viên xem lại bất cứ lúc nào — hai bản luôn ghi cùng lúc
+- Lớp tạo trước khi có `enrollment_code` chỉ còn bản hash, giáo viên phải đổi mã một lần để lấy bản đọc được; học viên của những lớp đó vẫn vào bằng mã cũ
+- Khi User nhập mã: bỏ khoảng trắng/gạch, đổi sang chữ Hoa, so với `enrollment_code`; nếu chưa khớp thì mới xét hash của các lớp chưa có bản đọc được
+- Một mã chỉ hợp lệ khi lớp ở trạng thái `active` và chưa đầy `max_students`
 
 ### 7.2 Deadline Enforcement
 

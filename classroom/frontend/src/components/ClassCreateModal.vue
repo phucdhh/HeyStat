@@ -27,6 +27,12 @@
         <label>Số học viên tối đa</label>
         <input class="form-input" type="number" v-model.number="form.max_students" min="1" max="500" />
       </div>
+      <div class="field">
+        <label>Mã lớp</label>
+        <input class="form-input" v-model="form.enrollment_code" maxlength="16"
+               placeholder="VD: XTSK26 — để trống sẽ tự sinh mã" />
+        <span class="hint">Học viên nhập mã này ở Lớp học → + Tham gia lớp.</span>
+      </div>
 
       <p v-if="createError" class="error">{{ createError }}</p>
 
@@ -37,11 +43,11 @@
         </button>
       </div>
 
-      <!-- The enrollment key is only ever returned by the create call. -->
+      <!-- Created classes keep a readable code, so this panel is a courtesy, not the only chance. -->
       <div v-else class="created">
         <p class="ok">Lớp <strong>{{ createdTitle }}</strong> đã sẵn sàng. Gửi mã này cho học viên:</p>
         <div class="key-display">{{ createdKey }}</div>
-        <p class="hint">Sau khi đóng hộp thoại bạn không xem lại mã được nữa, nhưng có thể sinh mã mới ở trang quản lý lớp.</p>
+        <p class="hint">Muốn xem lại hay đổi mã, mở lớp rồi vào tab Học viên.</p>
         <div class="modal-actions">
           <button class="btn-secondary" @click="copyKey">{{ copied ? '✓ Đã chép' : '📋 Sao chép mã' }}</button>
           <button class="btn-primary" @click="close">Xong</button>
@@ -69,7 +75,7 @@ const createError = ref('')
 const createdKey = ref('')
 const createdTitle = ref('')
 const copied = ref(false)
-const form = reactive({ title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso() })
+const form = reactive({ title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso(), enrollment_code: '' })
 
 watch(() => props.show, (open) => {
   if (!open) return
@@ -93,10 +99,11 @@ async function createClass() {
       max_students: form.max_students,
       starts_at: new Date(form.starts_at).toISOString(),
       ends_at: new Date(form.ends_at).toISOString(),
+      enrollment_code: form.enrollment_code.trim() || null,
     })
-    createdKey.value = data.enrollment_key ?? ''
+    createdKey.value = data.enrollment_code ?? ''
     createdTitle.value = data.title
-    Object.assign(form, { title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso() })
+    Object.assign(form, { title: '', description: '', max_students: 50, starts_at: nowIso(), ends_at: endIso(), enrollment_code: '' })
     emit('created', data.id)
   } catch (e: any) {
     const d = e?.response?.data?.detail
