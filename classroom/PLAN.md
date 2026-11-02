@@ -521,7 +521,8 @@ Tất cả request (trừ `/auth/*`) cần header `Authorization: Bearer <access
 | POST   | `/classes` | Teacher | Tạo lớp học mới |
 | GET    | `/classes/{id}` | Teacher/Student/Admin | Chi tiết lớp |
 | PATCH  | `/classes/{id}` | Teacher(owner)/Admin | Cập nhật lớp |
-| DELETE | `/classes/{id}` | Teacher(owner)/Admin | Xoá / archive lớp |
+| DELETE | `/classes/{id}` | Teacher(owner)/Admin | Xoá vĩnh viễn lớp (cascade bài tập, bài nộp, bài học, quiz, tệp) |
+| GET    | `/classes/{id}/risk` | Teacher(owner)/Admin | Đếm những gì sẽ mất khi xoá lớp, để hộp thoại cảnh báo |
 | POST   | `/classes/{id}/enroll` | User | Tham gia lớp bằng enrollment key |
 | DELETE | `/classes/{id}/enroll` | Student | Rời lớp |
 | GET    | `/classes/{id}/students` | Teacher/Admin | Danh sách sinh viên |

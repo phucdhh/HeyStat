@@ -34,6 +34,7 @@
             <button class="btn-sm secondary" @click="showKey(cls)">🔑 Mã lớp</button>
             <button v-if="cls.status === 'draft'" class="btn-sm activate" @click="toggleStatus(cls, 'active')">✅ Kích hoạt</button>
             <button v-else-if="cls.status === 'active'" class="btn-sm close-btn" @click="toggleStatus(cls, 'draft')">🔒 Đóng tạm</button>
+            <button class="btn-sm delete" @click="askDelete(cls)">🗑️ Xoá</button>
           </div>
         </div>
       </div>
@@ -78,6 +79,26 @@
         </div>
       </div>
     </div>
+
+    <!-- Delete class confirmation -->
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="closeDelete">
+      <div class="modal">
+        <h2>Xoá lớp “{{ deleteTarget.title }}”?</h2>
+        <p v-if="deleteRisk">Những thứ sau sẽ mất theo lớp và không phục hồi được:</p>
+        <p v-else class="risk-loading">Đang kiểm tra xem lớp đang có gì…</p>
+        <ul v-if="deleteRisk && riskLines(deleteRisk).length" class="risk-list">
+          <li v-for="line in riskLines(deleteRisk)" :key="line">{{ line }}</li>
+        </ul>
+        <p v-else-if="deleteRisk" class="risk-empty">Lớp này đang trống — chưa có bài tập, bài học hay học viên nào.</p>
+        <p class="risk-note">Tài khoản học viên vẫn còn, chỉ dữ liệu trong lớp này bị xoá. Muốn tạm đóng mà giữ bài vở, dùng “🔒 Đóng tạm”.</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="closeDelete">Huỷ</button>
+          <button class="btn-danger" :disabled="!deleteRisk || deleting" @click="doDelete">
+            {{ deleting ? 'Đang xoá…' : 'Xoá vĩnh viễn' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -97,6 +118,9 @@ const showCreate = ref(false)
 const copiedMsg = ref('')
 const displayedKey = ref('')
 const keyClass = ref<any>(null)
+const deleteTarget = ref<any>(null)
+const deleteRisk = ref<any>(null)
+const deleting = ref(false)
 
 function fmtDate(iso: string) {
   if (!iso) return ''
@@ -169,6 +193,57 @@ async function doCopyKey() {
   } catch {}
 }
 
+function riskLines(r: any): string[] {
+  const lines: string[] = []
+  if (r.students) lines.push(`${r.students} học viên đang tham gia`)
+  if (r.assignments || r.submissions) lines.push(`${r.assignments} bài tập với ${r.submissions} bài nộp`)
+  if (r.lessons) lines.push(`${r.lessons} bài học`)
+  if (r.quizzes) lines.push(`${r.quizzes} bài kiểm tra`)
+  if (r.files) lines.push(`${r.files} tệp dữ liệu`)
+  return lines
+}
+
+function closeDelete() {
+  deleteTarget.value = null
+  deleteRisk.value = null
+}
+
+async function askDelete(cls: any) {
+  deleteTarget.value = cls
+  deleteRisk.value = null
+  try {
+    const { data } = await api.get(`/classes/${cls.id}/risk`)
+    deleteRisk.value = data
+  } catch {
+    closeDelete()
+    copiedMsg.value = 'Không kiểm tra được dữ liệu của lớp'
+    setTimeout(() => (copiedMsg.value = ''), 2500)
+  }
+}
+
+async function doDelete() {
+  const cls = deleteTarget.value
+  if (!cls || !deleteRisk.value || deleting.value) return
+  deleting.value = true
+  try {
+    await api.delete(`/classes/${cls.id}`)
+    classes.value = classes.value.filter(x => x.id !== cls.id)
+    if (selectedClass.value === cls.id) {
+      selectedClass.value = classes.value[0]?.id ?? null
+      progress.value = null
+      if (selectedClass.value) loadProgress()
+    }
+    closeDelete()
+    copiedMsg.value = `Đã xoá lớp “${cls.title}”.`
+    setTimeout(() => (copiedMsg.value = ''), 3000)
+  } catch (e: any) {
+    copiedMsg.value = e?.response?.data?.detail ?? 'Không xoá được lớp'
+    setTimeout(() => (copiedMsg.value = ''), 3000)
+  } finally {
+    deleting.value = false
+  }
+}
+
 async function exportGrades(classId: string) {
   try {
     await downloadFile(`/classes/${classId}/grades/export`, `bang_diem_${classId}.csv`)
@@ -201,6 +276,15 @@ h1 { color: var(--amber-800); margin-bottom: 1rem; }
 .btn-sm.activate:hover { background: #A7F3D0; }
 .btn-sm.close-btn { background: #FEE2E2; color: #991B1B; border-color: #FCA5A5; }
 .btn-sm.close-btn:hover { background: #FECACA; }
+.btn-sm.delete { background: #fff; color: #B91C1C; border-color: #FCA5A5; }
+.btn-sm.delete:hover { background: #FEE2E2; }
+.btn-danger { background: #DC2626; color: #fff; border: none; padding: 0.5rem 1.1rem; border-radius: 7px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+.btn-danger:hover { background: #B91C1C; }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+.risk-loading, .risk-empty { font-size: 0.9rem; color: var(--color-text-muted); margin: 0 0 1rem; }
+.risk-list { margin: 0 0 1rem; padding-left: 1.3rem; }
+.risk-list li { font-size: 0.9rem; line-height: 1.7; }
+.risk-note { font-size: 0.82rem; color: var(--color-text-muted); margin: 0; }
 .key-modal { text-align: center; }
 .key-note { font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 1rem; }
 .key-display { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.2em; color: var(--amber-800); background: var(--amber-50); padding: 1rem; border-radius: 8px; border: 2px dashed var(--amber-300); margin-bottom: 1.25rem; font-family: monospace; }

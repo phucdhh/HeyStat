@@ -7,6 +7,7 @@ import uuid
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,8 +17,11 @@ from typing import Optional
 import bcrypt as _bcrypt_lib
 
 from database import get_db
-from models import Assignment, Class, Enrollment, Submission, User, UserRole, Role
+from models import Assignment, Class, ClassFile, Enrollment, Lesson, Quiz, Submission, User, UserRole, Role
 from auth.deps import get_current_user, require_teacher, require_admin
+from config import get_settings
+
+settings = get_settings()
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
@@ -67,6 +71,15 @@ class ClassResponse(BaseModel):
 
 class EnrollRequest(BaseModel):
     enrollment_key: str
+
+
+class ClassRiskResponse(BaseModel):
+    assignments: int
+    submissions: int
+    lessons: int
+    quizzes: int
+    files: int
+    students: int
 
 
 class StudentProgress(BaseModel):
@@ -306,8 +319,64 @@ async def delete_class(
 ):
     cls = await _get_class_or_404(db, class_id)
     await _require_teacher_owns(db, cls, current_user)
-    cls.status = "archived"
-    cls.updated_at = datetime.now(tz=timezone.utc)
+    paths = await _stored_files(db, class_id)
+    await db.delete(cls)
+    await db.commit()
+    root = Path(settings.upload_dir)
+    for rel in paths:
+        target = root / rel
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            # The class is already gone; a file we cannot reach should not turn
+            # the delete into a 500 the teacher would read as "xoá không được".
+            continue
+        # upload_dir keeps one folder per class and per assignment, so without
+        # this the volume quietly fills with empty directories.
+        for parent in target.parents:
+            if parent == root:
+                break
+            try:
+                parent.rmdir()
+            except OSError:
+                break  # still holds someone else's work; no ancestor can be empty either
+
+
+async def _stored_files(db: AsyncSession, class_id: uuid.UUID) -> set[str]:
+    """Uploads a class owns: the shared datasets and every handed-in .omv."""
+    files = await db.execute(select(ClassFile.file_path).where(ClassFile.class_id == class_id))
+    subs = await db.execute(
+        select(Submission.file_path)
+        .join(Assignment, Assignment.id == Submission.assignment_id)
+        .where(Assignment.class_id == class_id, Submission.file_path.isnot(None))
+    )
+    return set(files.scalars().all()) | set(subs.scalars().all())
+
+
+@router.get("/{class_id}/risk", response_model=ClassRiskResponse)
+async def class_risk(
+    class_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """How much work a delete would take down, for the dialog to warn about."""
+    cls = await _get_class_or_404(db, class_id)
+    await _require_teacher_owns(db, cls, current_user)
+    assignment_ids = select(Assignment.id).where(Assignment.class_id == class_id)
+
+    async def _count(q) -> int:
+        return (await db.execute(q)).scalar() or 0
+
+    return ClassRiskResponse(
+        assignments=await _count(select(func.count(Assignment.id)).where(Assignment.class_id == class_id)),
+        submissions=await _count(select(func.count(Submission.id)).where(Submission.assignment_id.in_(assignment_ids))),
+        lessons=await _count(select(func.count(Lesson.id)).where(Lesson.class_id == class_id)),
+        quizzes=await _count(select(func.count(Quiz.id)).where(Quiz.class_id == class_id)),
+        files=await _count(select(func.count(ClassFile.id)).where(ClassFile.class_id == class_id)),
+        students=await _count(
+            select(func.count(Enrollment.id)).where(Enrollment.class_id == class_id, Enrollment.status == "active")
+        ),
+    )
 
 
 @router.post("/{class_id}/enroll", status_code=201)
