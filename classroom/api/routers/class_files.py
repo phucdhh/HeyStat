@@ -6,7 +6,7 @@ import aiofiles
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from database import get_db
 from models import Class, ClassFile, Enrollment, User, UserRole, Role
 from auth.deps import get_current_user
 from services.file_validator import validate_file_extension, validate_mime_type
+from services.assignment_access import closed_file_ids, require_file_open
 from config import get_settings
 
 settings = get_settings()
@@ -60,6 +61,8 @@ class FileResponse_(BaseModel):
     file_size: Optional[int]
     mime_type: Optional[str]
     created_at: str
+    student_access: bool
+    is_locked: bool
 
     model_config = {"from_attributes": True}
 
@@ -71,17 +74,24 @@ async def list_files(
     db: AsyncSession = Depends(get_db),
 ):
     cls = await _get_class_or_404(db, class_id)
-    await _check_class_access(db, cls, current_user)
+    access = await _check_class_access(db, cls, current_user)
     r = await db.execute(select(ClassFile).where(ClassFile.class_id == class_id))
     files = r.scalars().all()
+    if access != "teacher":
+        # Draft exam uploads are not even named to students until the teacher opens one.
+        files = [f for f in files if f.student_access]
+    closed = await closed_file_ids(db, class_id)
     return [FileResponse_(id=str(f.id), file_name=f.file_name, file_size=f.file_size,
-                          mime_type=f.mime_type, created_at=str(f.created_at)) for f in files]
+                          mime_type=f.mime_type, created_at=str(f.created_at),
+                          student_access=f.student_access,
+                          is_locked=not f.student_access or f.id in closed) for f in files]
 
 
 @router.post("/classes/{class_id}/files", status_code=201)
 async def upload_file(
     class_id: uuid.UUID,
     file: UploadFile = File(...),
+    student_access: bool = Form(True),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -116,10 +126,38 @@ async def upload_file(
         file_path=str(dest_path.relative_to(settings.upload_dir)),
         file_size=len(data),
         mime_type=file.content_type,
+        student_access=student_access,
     )
     db.add(cf)
     await db.flush()
-    return {"id": str(cf.id), "file_name": cf.file_name, "file_size": cf.file_size}
+    return {"id": str(cf.id), "file_name": cf.file_name, "file_size": cf.file_size,
+            "student_access": cf.student_access, "is_locked": not cf.student_access}
+
+
+class FileAccessUpdate(BaseModel):
+    student_access: bool
+
+
+@router.patch("/classes/{class_id}/files/{file_id}")
+async def update_file_access(
+    class_id: uuid.UUID,
+    file_id: uuid.UUID,
+    body: FileAccessUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    cls = await _get_class_or_404(db, class_id)
+    if await _check_class_access(db, cls, current_user) != "teacher":
+        raise HTTPException(403, "Chỉ giáo viên mới được mở hoặc khoá tệp")
+    result = await db.execute(select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id))
+    cf = result.scalar_one_or_none()
+    if cf is None:
+        raise HTTPException(404, "Tệp không tồn tại")
+    closed = await closed_file_ids(db, class_id)
+    if body.student_access and cf.id in closed:
+        raise HTTPException(409, "Tệp thuộc bài đang khoá. Hãy mở bài trước khi mở tệp.")
+    cf.student_access = body.student_access
+    return {"student_access": cf.student_access, "is_locked": not cf.student_access or cf.id in closed}
 
 
 @router.get("/classes/{class_id}/files/{file_id}/download")
@@ -130,17 +168,19 @@ async def download_file(
     db: AsyncSession = Depends(get_db),
 ):
     cls = await _get_class_or_404(db, class_id)
-    await _check_class_access(db, cls, current_user)
+    access = await _check_class_access(db, cls, current_user)
     r = await db.execute(
         select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id)
     )
     cf = r.scalar_one_or_none()
     if not cf:
         raise HTTPException(404, "File không tồn tại")
+    if access != "teacher":
+        await require_file_open(db, cf)
     full_path = Path(settings.upload_dir) / cf.file_path
     if not full_path.exists():
         raise HTTPException(404, "File không tồn tại trên server")
-    return FileResponse(str(full_path), filename=cf.file_name)
+    return FileResponse(str(full_path), filename=cf.file_name, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/classes/{class_id}/files/{file_id}/omv-schema")
@@ -218,7 +258,7 @@ async def get_file_open_url(
 ):
     """Return a short-lived one-time URL so Jamovi can fetch the file without JWT."""
     cls = await _get_class_or_404(db, class_id)
-    await _check_class_access(db, cls, current_user)
+    access = await _check_class_access(db, cls, current_user)
     r = await db.execute(
         select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id)
     )
@@ -226,10 +266,12 @@ async def get_file_open_url(
     if not cf:
         raise HTTPException(404, "File không tồn tại")
 
+    if access != "teacher":
+        await require_file_open(db, cf)
     from auth.redis_client import get_redis
     token = secrets.token_hex(24)
     r_client = await get_redis()
-    await r_client.setex(f"file_ot:{token}", 300, str(cf.id))  # 5 min TTL, one-time
+    await r_client.setex(f"file_ot_access:{token}", 300, f"{cf.id}|{current_user.id}")
     return {"token": token, "filename": cf.file_name}
 
 
@@ -241,18 +283,26 @@ async def one_time_download(
     """No-auth one-time download – Jamovi fetches from this URL to open the file."""
     from auth.redis_client import get_redis
     r_client = await get_redis()
-    file_id_str = await r_client.getdel(f"file_ot:{token}")
-    if not file_id_str:
+    token_data = await r_client.getdel(f"file_ot_access:{token}")
+    if not token_data:
         raise HTTPException(404, "Token không hợp lệ hoặc đã hết hạn")
     try:
-        file_id = uuid.UUID(file_id_str if isinstance(file_id_str, str) else file_id_str.decode())
-    except ValueError:
+        parts = (token_data if isinstance(token_data, str) else token_data.decode()).split("|")
+        file_id, user_id = (uuid.UUID(part) for part in parts)
+    except (ValueError, UnicodeDecodeError):
         raise HTTPException(404, "Token không hợp lệ")
     r = await db.execute(select(ClassFile).where(ClassFile.id == file_id))
     cf = r.scalar_one_or_none()
     if not cf:
         raise HTTPException(404, "File không tồn tại")
+    r = await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))
+    user = r.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(403, "Tài khoản không còn quyền truy cập")
+    cls = await _get_class_or_404(db, cf.class_id)
+    if await _check_class_access(db, cls, user) != "teacher":
+        await require_file_open(db, cf)
     full_path = Path(settings.upload_dir) / cf.file_path
-    if not full_path.exists():
+    if not full_path.is_file():
         raise HTTPException(404, "File không tồn tại trên server")
-    return FileResponse(str(full_path), filename=cf.file_name)
+    return FileResponse(str(full_path), filename=cf.file_name, headers={"Cache-Control": "no-store"})

@@ -39,7 +39,7 @@ def test_the_written_explanation_is_an_answer_not_a_mark():
 def _assignment(answer_key: dict) -> SimpleNamespace:
     return SimpleNamespace(
         id="a1", class_id="c1", title="Bài 1", description="",
-        assignment_type="homework", max_score=10.0, deadline=NOW,
+        assignment_type="homework", is_open=True, max_score=10.0, deadline=NOW,
         allow_resubmit=True, group_size=1, allow_sharing=True, file_id=None,
         answer_key=answer_key, grading_config=None, created_at=NOW,
     )

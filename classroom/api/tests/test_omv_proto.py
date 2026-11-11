@@ -62,7 +62,8 @@ def test_results_become_gradeable_tables():
     assert main["module"] == "ttestOneS"
     assert main["title"] == "One Sample T-Test"
     assert main["columns"] == ["", "Statistic", "df", "p"]
-    assert main["rows"] == [["score", "7.33", "7.00", "<\u2009.001"]]
+    assert main["rows"] == [["score", "7.326", "7", "<\u2009.001"]]
+    assert main["values"] == [["score", 7.325754, 7, 0.0001592]]
     assert main["notes"] == ["H\u2080 \u03bc = 0"]
     assert doc["module_by_analysis"] == {"One Sample T-Test": "ttestOneS"}
 
@@ -80,14 +81,39 @@ def test_a_hidden_statistics_box_is_not_gradeable():
         (0.8612201, "zto,pvalue", "number", ".861"),
         (1e-9, "zto,pvalue", "number", "<\u2009.001"),
         (0.0001592, "zto,pvalue", "number", "<\u2009.001"),
-        (7.325754, "", "number", "7.33"),
-        (0.0156786, "", "number", "0.0157"),
-        (219.086, "", "number", "219"),
+        (0.0, "pvalue", "number", "<\u2009.001"),
+        (0.0009999, "pvalue", "number", "<\u2009.001"),
+        (0.001, "pvalue", "number", ".001"),
+        (0.0010001, "pvalue,zto", "number", ".001"),
+        (0.0016, "pvalue", "number", ".002"),
+        (1.0, "pvalue", "number", "1.000"),
+        (7.325754, "", "number", "7.326"),
+        (12.34567, "", "number", "12.346"),
+        (0.0156786, "", "number", "0.016"),
+        (219.086, "", "number", "219.086"),
+        (-12.34567, "", "number", "-12.346"),
+        (0.0001592, "", "number", "0.000"),
+        (0.0, "", "number", "0.000"),
+        (7.0, "", "number", "7.000"),
+        (7, "", "number", "7"),
+        (1047, "", "integer", "1047"),
         (7.0, "", "integer", "7"),
+        (0.0, "", "integer", "0"),
         (0.25, "pc", "number", "25.0\u2009%"),
-        (-2.0, "log10", "number", "0.0100"),
+        (0.1234567, "pc", "number", "12.3\u2009%"),
+        (0.0, "pc", "number", "0.0\u2009%"),
+        (1.0, "pc", "number", "100.0\u2009%"),
+        (0.1234567, "zto", "number", "0.123"),
+        (-2.0, "log10", "number", "0.010"),
+        (-4.0, "log10,pvalue", "number", "<\u2009.001"),
+        (None, "", "number", ""),
+        (None, "pvalue", "number", ""),
+        ("NaN", "", "number", "NaN"),
+        ("label", "", "text", "label"),
         (float("nan"), "", "number", "NaN"),
-        (1e7, "", "number", "1.00e+7"),
+        (float("inf"), "", "number", "Inf"),
+        (float("-inf"), "", "number", "-Inf"),
+        (1e7, "", "number", "10000000.000"),
     ],
 )
 def test_numbers_print_the_way_the_results_view_prints_them(value, format_, type_, expected):
@@ -95,11 +121,70 @@ def test_numbers_print_the_way_the_results_view_prints_them(value, format_, type
     assert omv_proto.format_number(value, fmt) == expected
 
 
-def test_missing_and_not_a_number_cells_are_blank():
+def test_real_column_precision_does_not_depend_on_other_rows():
+    values = [7.325754, 12.34567, 0.0156786, 7.0, None]
+    fmt = omv_proto.determ_format(values, "number", "")
+    assert [omv_proto.format_number(v, fmt) for v in values] == [
+        "7.326", "12.346", "0.016", "7.000", ""]
+    assert values == [7.325754, 12.34567, 0.0156786, 7.0, None]
+
+
+@pytest.mark.parametrize("type_, digits", [("sf", 3), ("sf", 5), ("dp", 2), ("dp", 4), ("dp", 5)])
+def test_classroom_tables_ignore_the_browser_report_precision(type_, digits):
+    settings = {**omv_proto.DEFAULT_SETTINGS, "t": type_, "n": digits}
+    fmt = omv_proto.determ_format([7.325754], "number", "", settings)
+    browser_text = omv_proto.format_number(7.325754, fmt)
+    doc = doc_of(ttest_entry(), index_html=(
+        "<h1>One Sample T-Test</h1><table><tr><th scope='col'>Statistic</th></tr>"
+        f"<tr><td>{browser_text}</td></tr></table>"))
+    assert doc["tables"][0]["rows"][0][1] == "7.326"
+    assert lookup_stat(doc, table="One Sample T-Test", column="Statistic")[0] == 7.325754
+
+
+@pytest.mark.parametrize(
+    "value, type_, format_, text",
+    [
+        (12.34567, "number", "", "12.346"),
+        (0.0001592, "number", "pvalue", "<\u2009.001"),
+        (0.1234567, "number", "pc", "12.3\u2009%"),
+        (1047, "number", "", "1047"),
+        (7.0, "integer", "", "7"),
+        (7.1234567, "number", "", "7.123"),  # Fractional df stays real.
+    ],
+)
+def test_rounded_cells_and_footnotes_do_not_change_numeric_lookup(value, type_, format_, text):
+    entry = {"dir": "test", "blob": analysis("test", element(
+        "stats", "Statistics", table([
+            column("stat", "Statistic", [cell(value, footnotes=["1"])],
+                   type_=type_, format=format_),
+        ], notes=[note("1", "A note")])))}
+    doc = doc_of(entry)
+    assert doc["tables"][0]["rows"] == [[text + "^{1}"]]
+    assert doc["tables"][0]["values"] == [[value]]
+    assert lookup_stat(doc, table="Statistics", column="Statistic") == (value, "")
+
+
+@pytest.mark.parametrize("format_, value, expected", [
+    ("", 12.34567, "12,346"),
+    ("pvalue", 0.0001592, "<\u2009,001"),
+    ("pvalue", 0.001, ",001"),
+    ("pc", 0.1234567, "12,3\u2009%"),
+])
+def test_decimal_separator_keeps_jamovi_semantics(format_, value, expected):
+    settings = {**omv_proto.DEFAULT_SETTINGS, "ds": ","}
+    fmt = omv_proto.determ_format([value], "number", format_, settings)
+    assert omv_proto.format_number(value, fmt) == expected
+
+
+def test_missing_and_not_a_number_cells_keep_their_display_and_values():
     column_bytes = column("x", "X", [cell(None), cell(True), cell(4.0)])
     decoded = omv_proto._decode_column(column_bytes)
     assert [c["value"] for c in decoded["cells"]] == [None, "NaN", 4.0]
     assert [c["missing"] for c in decoded["cells"]] == [True, False, False]
+    doc = doc_of({"dir": "test", "blob": analysis("test", element(
+        "stats", "Statistics", table([column_bytes])))})
+    assert doc["tables"][0]["rows"] == [[""], ["NaN"], ["4.000"]]
+    assert doc["tables"][0]["values"] == [[None], ["NaN"], [4.0]]
 
 
 def test_footnotes_number_their_marker():
@@ -112,7 +197,8 @@ def test_footnotes_number_their_marker():
             ], notes=[note("1", "A note"), note("2", "Another note")]))),
     }
     doc = doc_of(entry)
-    assert doc["tables"][0]["rows"] == [["0.0242^{1}^{2}"]]
+    assert doc["tables"][0]["rows"] == [["0.024^{1}^{2}"]]
+    assert doc["tables"][0]["values"] == [[0.0242]]
     assert doc["tables"][0]["notes"] == ["A note", "Another note"]
 
 

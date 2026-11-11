@@ -31,6 +31,33 @@
     }, 300);
   }
 
+  function migrateDefaultFormat() {
+    waitForEl('jmv-appmenu', function (appMenu) {
+      const settings = appMenu.model?.settings();
+      if (!settings) return;
+
+      function apply() {
+        // This spelling is jamovi's API. Do not overwrite preferences before
+        // the server has supplied them, or keep enforcing a format afterwards.
+        if (settings.get('settingsRecieved') !== true) return;
+        settings.off('change:settingsRecieved', apply);
+
+        let format;
+        try { format = JSON.parse(settings.get('format')); }
+        catch (_) { return; }
+        // Migrate only the legacy default (older versions omitted pt).
+        // Explicit dp2/4/5, other sf choices and custom p formats stay intact.
+        if (format?.t === 'sf' && format.n === 3 && format.p === 3 &&
+            (format.pt === undefined || format.pt === 'dp')) {
+          settings.setSetting('format', JSON.stringify({ ...format, t: 'dp', pt: 'dp' }));
+        }
+      }
+
+      settings.on('change:settingsRecieved', apply);
+      apply();
+    });
+  }
+
   function getInstanceId() {
     const m = window.location.pathname.match(/\/([a-f0-9-]{8,})\//);
     return m ? m[1] : null;
@@ -291,6 +318,7 @@
   }
 
   ready(function () {
+    migrateDefaultFormat();
     injectCSS();
     waitForEl('body', function () {
       buildToolbar();

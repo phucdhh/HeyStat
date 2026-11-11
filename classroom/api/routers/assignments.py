@@ -16,6 +16,7 @@ from models import (
 )
 from auth.deps import get_current_user
 from services.markdown import sanitize_md
+from services.assignment_access import require_assignment_open, require_file_open
 
 router = APIRouter(tags=["assignments"])
 
@@ -74,8 +75,10 @@ async def _ensure_file_in_class(db, class_id, file_id):
     if file_id is None:
         return
     r = await db.execute(select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id))
-    if r.scalar_one_or_none() is None:
+    file = r.scalar_one_or_none()
+    if file is None:
         raise HTTPException(400, "Bộ dữ liệu không thuộc lớp học này")
+    return file
 
 
 # ─── schemas ────────────────────────────────────────────────────
@@ -85,6 +88,7 @@ class AssignmentCreate(BaseModel):
     description: str
     file_id: Optional[uuid.UUID] = None
     assignment_type: str = "homework"
+    is_open: Optional[bool] = None
     max_score: float = 10.0
     deadline: datetime
     allow_resubmit: bool = True
@@ -98,6 +102,7 @@ class AssignmentUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     assignment_type: Optional[str] = None
+    is_open: bool = True
     deadline: Optional[datetime] = None
     max_score: Optional[float] = None
     allow_resubmit: Optional[bool] = None
@@ -114,6 +119,7 @@ class AssignmentResponse(BaseModel):
     title: str
     description: str
     assignment_type: str
+    is_open: bool
     max_score: float
     deadline: datetime
     allow_resubmit: bool
@@ -134,16 +140,18 @@ def _to_response(a: Assignment, *, with_key: bool) -> AssignmentResponse:
         {k: q[k] for k in ("id", "label", "type", "points", "comment", "comment_hint") if k in q}
         for q in (a.answer_key or {}).get("questions", [])
     ]
+    visible = with_key or a.is_open
     return AssignmentResponse(
         id=str(a.id), class_id=str(a.class_id), title=a.title,
-        description=a.description, assignment_type=a.assignment_type,
+        description=a.description if visible else "", assignment_type=a.assignment_type,
+        is_open=a.is_open,
         max_score=float(a.max_score), deadline=a.deadline,
         allow_resubmit=a.allow_resubmit, group_size=a.group_size,
         allow_sharing=a.allow_sharing,
-        file_id=str(a.file_id) if a.file_id else None,
+        file_id=str(a.file_id) if a.file_id and visible else None,
         answer_key=a.answer_key if with_key else None,
         grading_config=a.grading_config if with_key else None,
-        questions=questions or None,
+        questions=(questions or None) if visible else None,
         created_at=a.created_at,
     )
 
@@ -203,13 +211,17 @@ async def create_assignment(
     if body.assignment_type == "exam":
         body.allow_sharing = False
         body.allow_resubmit = False
-    await _ensure_file_in_class(db, class_id, body.file_id)
+    file = await _ensure_file_in_class(db, class_id, body.file_id)
+    is_open = body.is_open if body.is_open is not None else body.assignment_type != "exam"
+    if file is not None and is_open:
+        file.student_access = True
     a = Assignment(
         class_id=class_id,
         title=body.title,
         description=sanitize_md(body.description),
         file_id=body.file_id,
         assignment_type=body.assignment_type,
+        is_open=is_open,
         max_score=body.max_score,
         deadline=body.deadline,
         allow_resubmit=body.allow_resubmit,
@@ -251,12 +263,19 @@ async def update_assignment(
     updates = body.model_dump(exclude_unset=True)
     if "description" in updates:
         updates["description"] = sanitize_md(updates["description"])
+    if "assignment_type" in updates and updates["assignment_type"] not in ("homework", "project", "exam"):
+        raise HTTPException(400, "Loại bài tập không hợp lệ")
     if "file_id" in updates:
         await _ensure_file_in_class(db, class_id, updates["file_id"])
-    # chk_exam_no_sharing / chk_exam_no_resubmit reject the row otherwise, same as on create
-    if updates.get("assignment_type") == "exam":
+    if updates.get("assignment_type", a.assignment_type) == "exam":
         updates["allow_sharing"] = False
         updates["allow_resubmit"] = False
+        if a.assignment_type != "exam":
+            updates.setdefault("is_open", False)
+    if updates.get("is_open") is True or ("file_id" in updates and updates.get("is_open", a.is_open)):
+        file = await _ensure_file_in_class(db, class_id, updates.get("file_id", a.file_id))
+        if file is not None:
+            file.student_access = True
     # the marks students saw must follow the rules they were graded against
     criteria_changed = any(
         field in updates and updates[field] != getattr(a, field)
@@ -299,12 +318,10 @@ async def get_assignment_dataset(
     ``Dataset_[Student]_[Assignment].<ext>`` and never on the teacher's original.
     """
     a = await _get_assignment_or_404(db, assignment_id)
-    if not await _is_enrolled(db, a.class_id, current_user.id):
-        roles = await _get_user_roles_set(db, current_user.id)
-        cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
-        cls = cls_r.scalar_one()
-        if "admin" not in roles and cls.teacher_id != current_user.id:
-            raise HTTPException(403, "Bạn chưa tham gia lớp học này")
+    cls = await _get_class_or_404(db, a.class_id)
+    access = await _class_access_role(db, cls, current_user)
+    if access != "teacher":
+        require_assignment_open(a)
     if not a.file_id:
         raise HTTPException(404, "Bài tập không kèm bộ dữ liệu")
 
@@ -312,6 +329,9 @@ async def get_assignment_dataset(
     cf = fr.scalar_one_or_none()
     if not cf:
         raise HTTPException(404, "Bộ dữ liệu không tồn tại")
+
+    if access != "teacher":
+        await require_file_open(db, cf)
 
     from config import get_settings
     from fastapi.responses import FileResponse
@@ -326,6 +346,7 @@ async def get_assignment_dataset(
         path=str(full_path),
         filename=clone_name,
         media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
     )
 
 

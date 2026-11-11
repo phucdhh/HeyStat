@@ -20,6 +20,7 @@ from config import get_settings
 from services.auto_grader import auto_grade
 from services.file_validator import validate_file_extension, validate_mime_type
 from services.omv_reader import parse_omv
+from services.assignment_access import require_assignment_open
 
 settings = get_settings()
 router = APIRouter(tags=["submissions"])
@@ -148,17 +149,23 @@ async def _create_submission(
     answers: Optional[dict] = None,
     selected: Optional[list[int]] = None,
     report: Optional[str] = None,
+    draft_id: Optional[uuid.UUID] = None,
 ) -> SubmissionResponse:
     a = await _get_assignment_or_404(db, assignment_id)
     if not await _is_enrolled(db, a.class_id, current_user.id):
         raise HTTPException(403, "Bạn chưa tham gia lớp học này")
+    require_assignment_open(a)
+    if answers is not None and not isinstance(answers, dict):
+        raise HTTPException(400, "Trường answers phải là JSON object")
+    if selected is not None and (not isinstance(selected, list) or any(type(i) is not int for i in selected)):
+        raise HTTPException(400, "Trường selected phải là danh sách chỉ số bảng")
 
     # Deadline check (server-side)
     now = datetime.now(tz=timezone.utc)
     if is_final and now > a.deadline.replace(tzinfo=timezone.utc):
         raise HTTPException(403, "Đã quá hạn nộp bài")
 
-    # Resubmit check
+    # Resubmit check: a draft is not a second submission, only a final replaces one.
     if is_final and not a.allow_resubmit:
         existing_final = await db.execute(
             select(Submission).where(
@@ -170,9 +177,29 @@ async def _create_submission(
         if existing_final.scalar_one_or_none():
             raise HTTPException(400, "Bài tập này không cho phép nộp lại")
 
-    file_path: Optional[str] = None
+    sub = None
+    if draft_id is not None:
+        r = await db.execute(
+            select(Submission).where(
+                Submission.id == draft_id,
+                Submission.assignment_id == assignment_id,
+                Submission.student_id == current_user.id,
+            ).with_for_update()
+        )
+        sub = r.scalar_one_or_none()
+        if (sub is None or sub.is_final or sub.graded_at is not None
+                or sub.graded_by is not None or sub.score is not None
+                or not (sub.session_snapshot or {}).get("draft")):
+            raise HTTPException(409, "Không thể cập nhật bản nháp này")
+
+    if is_final and sub is None and file is None and not answers:
+        raise HTTPException(400, "Bài nộp chưa có đáp án hoặc tệp kết quả")
+
+    old_path = sub.file_path if sub else None
+    file_path: Optional[str] = old_path
     doc: Optional[dict] = None
     data: Optional[bytes] = None
+    dest: Optional[Path] = None
     if report is not None and len(report) > _MAX_REPORT_CHARS:
         raise HTTPException(400, "Báo cáo kết quả vượt quá kích thước cho phép")
     if file:
@@ -191,8 +218,14 @@ async def _create_submission(
         file_path = str(dest.relative_to(settings.upload_dir))
         doc = _read_outputs(data, report)
 
-    tables = _table_rows(doc) if doc else []
-    snapshot = _snapshot_payload(doc, selected) if doc else None
+    snapshot = _snapshot_payload(doc, selected) if doc else (dict(sub.session_snapshot or {}) if sub else {})
+    if not is_final:
+        snapshot.update(draft=True, synced_at=now.isoformat())
+    else:
+        snapshot.pop("draft", None)
+    tables = snapshot.get("tables", [])
+    if answers is None and sub is not None:
+        answers = sub.answers
 
     # Demote previous final
     if is_final:
@@ -206,26 +239,39 @@ async def _create_submission(
         for s in prev_finals.scalars().all():
             s.is_final = False
 
-    sub = Submission(
-        assignment_id=assignment_id,
-        student_id=current_user.id,
-        file_path=file_path,
-        session_snapshot=snapshot,
-        answers=answers,
-        is_final=is_final,
-    )
-    db.add(sub)
+    if sub is None:
+        sub = Submission(assignment_id=assignment_id, student_id=current_user.id)
+        db.add(sub)
+    sub.file_path = file_path
+    sub.session_snapshot = snapshot or None
+    sub.answers = answers
+    sub.is_final = is_final
+    sub.submitted_at = now
 
     grade: Optional[dict] = None
-    if is_final and data is not None:
+    if is_final:
         grade = auto_grade(a, doc, answers)
         if grade:
-            sub.score = grade["score"]
-            sub.feedback = grade["feedback"]
             sub.auto_grade = grade
-            sub.graded_at = now
+            sub.feedback = grade["feedback"]
+            if any(not item.get("pending") for item in grade["items"]):
+                sub.score = grade["score"]
+                sub.graded_at = now
 
-    await db.flush()
+    try:
+        await db.flush()
+        if not is_final or draft_id is not None:
+            await db.commit()
+    except Exception:
+        if dest is not None:
+            dest.unlink(missing_ok=True)
+        raise
+    if old_path and dest is not None:
+        # Never remove the previous snapshot before its replacement is committed.
+        try:
+            (Path(settings.upload_dir) / old_path).unlink(missing_ok=True)
+        except OSError:
+            pass
 
     if is_final:
         await _notify(db, current_user.id, "submission.received",
@@ -279,16 +325,21 @@ def regrade_submission(assignment: Assignment, sub: Submission, doc: Optional[di
     a teacher scored it by hand, the file cannot be read, or the assignment simply
     has no automatic criteria.
     """
-    if sub.graded_by is not None or doc is None:
+    if sub.graded_by is not None or (doc is None and sub.file_path):
         return None
-    _refresh_snapshot(sub, doc)
+    if doc is not None:
+        _refresh_snapshot(sub, doc)
     grade = auto_grade(assignment, doc, sub.answers)
     if grade is None:
         return None
-    sub.score = grade["score"]
     sub.feedback = grade["feedback"]
     sub.auto_grade = grade
-    sub.graded_at = datetime.now(tz=timezone.utc)
+    if any(not item.get("pending") for item in grade["items"]):
+        sub.score = grade["score"]
+        sub.graded_at = datetime.now(tz=timezone.utc)
+    else:
+        sub.score = None
+        sub.graded_at = None
     return grade
 
 
@@ -311,7 +362,7 @@ async def regrade_assignment(db: AsyncSession, assignment: Assignment) -> dict:
             skipped += 1
             continue
         doc = _doc_of_submission(sub)
-        if doc is None:
+        if doc is None and sub.file_path:
             unreadable += 1
             continue
         if regrade_submission(assignment, sub, doc) is None:

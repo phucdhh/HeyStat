@@ -32,6 +32,16 @@ export interface Capture {
   report: string
 }
 
+export function sessionErrorMessage(e: any, fallback: string): string {
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const messages = detail.map(item => item?.msg).filter(Boolean)
+    if (messages.length) return messages.join('; ')
+  }
+  return e?.message || fallback
+}
+
 export function useJamoviSession() {
   const session = ref<SessionTokenResponse | null>(null)
   const instanceId = ref<string | null>(null)
@@ -44,6 +54,7 @@ export function useJamoviSession() {
   const frameEl = ref<HTMLIFrameElement | null>(null)
 
   async function start(assignmentId: string) {
+    if (starting.value || session.value) return
     starting.value = true
     error.value = ''
     try {
@@ -51,8 +62,8 @@ export function useJamoviSession() {
       session.value = data
 
       if (!data.dataset) {
-        // No dataset attached: jamovi starts blank, so there is nothing to name
-        // the capture file after and the student submits from "Tệp của tôi".
+        // A blank session may acquire an instance after the iframe loads.
+        // Answers can still be saved/submitted without a dataset or output tables.
         embedUrl.value = `${window.location.origin}${data.embed_url}`
         return
       }
@@ -72,28 +83,47 @@ export function useJamoviSession() {
       const url = opened.url.startsWith('/') ? opened.url : `/${opened.url}`
       instanceId.value = url.replace(/\/+$/, '').split('/').pop() || null
       embedUrl.value = `${window.location.origin}${url}?${data.session_query}`
-      captureName.value = data.dataset.file_name
+      captureName.value = `${data.dataset.file_name.replace(/\.[^/.]+$/, '')}.omv`
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? 'Không thể khởi động phiên HeyStat'
+      error.value = sessionErrorMessage(e, 'Không thể khởi động phiên HeyStat')
     } finally {
       starting.value = false
     }
   }
 
+  /** Follow instance changes (including a dataset opened inside a blank session)
+   * without changing the iframe src or restarting the student's session. */
+  function refreshInstance(): string | null {
+    try {
+      const location = frameEl.value?.contentWindow?.location
+      if (location?.origin === window.location.origin) {
+        const match = location.pathname.match(/^\/([a-f0-9-]{8,})(?:\/|$)/i)
+        instanceId.value = match?.[1] ?? null
+      }
+    } catch {
+      // The initial instance from /open remains usable while the frame navigates.
+    }
+    return instanceId.value
+  }
+
   /** Ask jamovi to write its current state into {{Temp}} and fetch it back. */
   async function capture(): Promise<Capture> {
-    if (!instanceId.value) throw new Error('Phiên HeyStat chưa sẵn sàng')
+    if (capturing.value) throw new Error('Đang chụp phiên HeyStat, vui lòng đợi')
+    if (session.value?.collab_role !== 'writer') throw new Error('Chỉ Writer mới được lưu phiên làm việc')
+    const id = refreshInstance()
+    if (!id) throw new Error('Phiên HeyStat chưa sẵn sàng')
     capturing.value = true
     try {
       const name = captureName.value || `Dataset_${(session.value?.assignment_id ?? '').slice(0, 8)}.omv`
       const options = { path: `{{Temp}}/${name.replace(/\.omv$/i, '')}.omv`, export: true }
       const form = new FormData()
       form.append('options', JSON.stringify(options))
-      const saved = await lastJsonLine(await fetch(`/${instanceId.value}/save`, { method: 'POST', body: form }))
+      const saved = await lastJsonLine(await fetch(`/${id}/save`, { method: 'POST', body: form }))
       if (saved.status !== 'OK') throw new Error(saved.message || 'HeyStat không lưu được phiên')
 
-      const source = saved.filename || String(saved.path).split('/').pop()
-      const fileResp = await fetch(`/${instanceId.value}/dl/${encodeURIComponent(source)}`)
+      const source = saved.filename || saved.path?.split('/').pop()
+      if (!source) throw new Error('HeyStat không trả về tệp phiên đã chụp')
+      const fileResp = await fetch(`/${id}/dl/${encodeURIComponent(source)}`)
       if (!fileResp.ok) throw new Error(`Không lấy được file (.omv) từ HeyStat (HTTP ${fileResp.status})`)
       return { blob: await fileResp.blob(), report: captureReport() }
     } finally {
@@ -126,8 +156,10 @@ export function useJamoviSession() {
 
   async function stop() {
     const token = session.value?.session_token
-    if (!token) return
     session.value = null
+    instanceId.value = null
+    embedUrl.value = null
+    if (!token) return
     try {
       await api.delete('/sessions/token', { data: { session_token: token } })
     } catch {}
@@ -135,6 +167,6 @@ export function useJamoviSession() {
 
   return {
     session, instanceId, embedUrl, captureName, error, starting, capturing, lastAutoSave, frameEl,
-    start, capture, captureReport, stop,
+    start, capture, captureReport, refreshInstance, stop,
   }
 }

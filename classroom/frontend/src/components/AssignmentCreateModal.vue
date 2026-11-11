@@ -29,6 +29,10 @@
                   :class="{ sel: form.assignment_type === t.value }"
                   @click="setType(t.value)">{{ t.label }}</button>
         </div>
+        <p v-if="isExam" class="hint">
+          Bài kiểm tra mới luôn ở trạng thái <strong>chưa mở</strong>. Sau khi chuẩn bị xong, giáo viên phải chủ động mở bài để học viên truy cập và làm bài.
+        </p>
+        <p v-else class="hint">Bài tập về nhà và bài thực hành được mở cho học viên ngay khi tạo.</p>
       </div>
       <div class="field">
         <label>Mô tả / yêu cầu gửi bài <span class="req">*</span></label>
@@ -61,6 +65,12 @@
       <p class="hint">
         Với bài chấm tự động, hãy đính kèm chính <strong>file .omv mẫu bạn đã chạy xong</strong> —
         HeyStat đọc được các bảng trong file đó và biến chúng thành tiêu chí chấm.
+      </p>
+
+      <p class="hint">
+        Tệp mới tải lên tại đây được giữ riêng tư khi còn là bản nháp, kể cả khi huỷ tạo bài.
+        Tệp đính kèm được mở cho học viên khi bài tập được mở; với bài kiểm tra, giáo viên phải mở bài sau khi tạo.
+        Chọn tệp đã công khai không làm tệp đó riêng tư. Không thể thu hồi các bản học viên đã tải xuống trước đó.
       </p>
 
       <!-- ── 4. auto-grade checks ──────────────────────── -->
@@ -130,34 +140,52 @@
       </div>
 
       <!-- ── 5. sidebar questions ──────────────────────── -->
-      <h4>Câu hỏi trên thanh bên (có đáp án để chấm tự động)</h4>
+      <h4>Điền đáp án (chấm tự động)</h4>
       <div class="row">
-        <button class="btn-sm" type="button" @click="addQuestion">+ Thêm câu hỏi</button>
-        <span class="meta" v-if="questions.length">
-          {{ questions.length }} câu · {{ questionPoints }} điểm
+        <button class="btn-sm" type="button" @click="addQuestion('number')">+ Thêm câu điền đáp án</button>
+        <span class="meta" v-if="objectiveQuestions.length">
+          {{ objectiveQuestions.length }} câu · {{ objectivePoints }} điểm tự động
         </span>
       </div>
-      <p class="hint">Học viên chỉ thấy nội dung câu hỏi, không thấy đáp án bạn nhập ở đây.</p>
-      <div v-for="(q, i) in questions" :key="i" class="block">
+      <p class="hint">
+        Học viên không thấy đáp án bạn nhập ở đây. Có thể thêm ô lời giải tự do (không bắt buộc);
+        học viên có thể viết lời giải ngay cả khi chưa điền đáp án. Lời giải không được chấm tự động.
+      </p>
+      <div v-for="q in objectiveQuestions" :key="q.id" class="block">
         <div class="row">
           <input v-model="q.label" class="grow" placeholder="VD: Giá trị trung bình của điểm số" />
           <select v-model="q.type" title="Loại đáp án">
             <option value="number">Số (± sai số)</option>
             <option value="text">Chữ (nhiều đáp án đúng)</option>
-            <option value="essay">Tự luận (thầy/cô chấm tay)</option>
           </select>
-          <input v-if="q.type !== 'essay'" v-model="q.answer" class="mid"
+          <input v-model="q.answer" class="mid"
                  :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
-          <span v-else class="meta grow">Học viên viết bài; phần này thầy/cô đọc và cho điểm.</span>
           <input v-if="q.type === 'number'" v-model.number="q.tolerance" class="num" type="number" step="any" title="Sai số cho phép" />
-          <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm" />
-          <button class="btn-sm danger" type="button" @click="questions.splice(i, 1)">✕</button>
+          <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm tự động" />
+          <button class="btn-sm danger" type="button" title="Xoá câu hỏi" @click="removeQuestion(q)">✕</button>
         </div>
         <div class="row">
-          <input v-model="q.explain" class="grow" placeholder="Giải thích khi học viên trả lời sai" />
-          <label class="chk"><input type="checkbox" v-model="q.comment" /> Thêm ô lời giải</label>
+          <input v-model="q.explain" class="grow" placeholder="Giải thích khi học viên trả lời sai (tuỳ chọn)" />
+          <label class="chk"><input type="checkbox" v-model="q.comment" /> Thêm ô lời giải tự do (tuỳ chọn)</label>
           <input v-if="q.comment" v-model="q.comment_hint" class="grow"
                  placeholder="Nhãn hiển thị trên ô lời giải (vd. 'Cách bạn làm / lý do chọn giá trị này')" />
+        </div>
+      </div>
+
+      <h4>Tự luận / nhận xét (giáo viên chấm)</h4>
+      <div class="row">
+        <button class="btn-sm" type="button" @click="addQuestion('essay')">+ Thêm câu tự luận / nhận xét</button>
+        <span class="meta" v-if="essayQuestions.length">
+          {{ essayQuestions.length }} câu · {{ manualPoints }} điểm giáo viên chấm
+        </span>
+      </div>
+      <p class="hint">Học viên viết tự luận hoặc nhận xét. Không cần đáp án mẫu; giáo viên đọc bài và cho điểm.</p>
+      <div v-for="q in essayQuestions" :key="q.id" class="block">
+        <div class="row">
+          <textarea v-model="q.label" class="form-input grow" rows="3" aria-label="Nội dung câu tự luận / nhận xét"
+                    placeholder="VD: Nhận xét kết quả phân tích và giải thích ý nghĩa" />
+          <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm giáo viên chấm" />
+          <button class="btn-sm danger" type="button" title="Xoá câu hỏi" @click="removeQuestion(q)">✕</button>
         </div>
       </div>
 
@@ -181,15 +209,17 @@
       </p>
 
       <p class="total">
-        Tổng điểm tự động: <strong>{{ autoTotal }}</strong> / {{ form.max_score }}
-        <span v-if="!hasAuto" class="muted">· chưa có tiêu chí nên bài sẽ chấm tay</span>
-        <span v-else-if="autoTotal !== Number(form.max_score)" class="muted">· bài nộp sẽ quy về {{ form.max_score }} điểm</span>
+        Chấm tự động: <strong>{{ autoTotal }}</strong> điểm · Giáo viên chấm: <strong>{{ manualPoints }}</strong> điểm.
+        <br />Tổng điểm tiêu chí: <strong>{{ rubricTotal }}</strong> · Điểm tối đa bài tập: {{ form.max_score }}.
+        <span v-if="!checks.length && !questions.length" class="muted">Chưa có tiêu chí nên bài sẽ chấm tay.</span>
+        <span v-else-if="rubricTotal !== Number(form.max_score)" class="muted">Điểm tiêu chí được quy về thang {{ form.max_score }} điểm.</span>
+        <span v-if="essayQuestions.length" class="muted">Phần tự luận cần giáo viên cho điểm, không phải điểm tự động.</span>
       </p>
       <p v-if="error" class="error">{{ error }}</p>
 
       <div class="modal-actions">
         <button class="btn-secondary" type="button" @click="close">Huỷ</button>
-        <button class="btn-primary" type="button" :disabled="saving" @click="create">
+        <button class="btn-primary" type="button" :disabled="saving || uploading" @click="create">
           {{ saving ? 'Đang tạo…' : 'Tạo bài tập' }}
         </button>
       </div>
@@ -255,10 +285,14 @@ const checks = reactive<any[]>([])
 const isExam = computed(() => form.assignment_type === 'exam')
 const needsValue = (op: string) => !['ran', 'present'].includes(op)
 
-const checkPoints = computed(() => checks.reduce((s, c) => s + (Number(c.points) || 0), 0))
-const questionPoints = computed(() => questions.reduce((s, q) => s + (Number(q.points) || 0), 0))
-const hasAuto = computed(() => checks.length > 0 || questions.length > 0)
-const autoTotal = computed(() => checkPoints.value + questionPoints.value)
+const objectiveQuestions = computed(() => questions.filter((q) => q.type !== 'essay'))
+const essayQuestions = computed(() => questions.filter((q) => q.type === 'essay'))
+const sumPoints = (entries: any[]) => entries.reduce((sum, entry) => sum + (Number(entry.points) || 0), 0)
+const checkPoints = computed(() => sumPoints(checks))
+const objectivePoints = computed(() => sumPoints(objectiveQuestions.value))
+const manualPoints = computed(() => sumPoints(essayQuestions.value))
+const autoTotal = computed(() => checkPoints.value + objectivePoints.value)
+const rubricTotal = computed(() => autoTotal.value + manualPoints.value)
 
 const byGroup = (g: string) => ASSIGNMENT_BLUEPRINTS.filter((b) => b.group === g)
 
@@ -285,28 +319,27 @@ function setType(v: string) {
   }
 }
 
-function newQuestion(label: string, answer: any) {
-  return {
-    id: `q${questions.length + 1}`,
-    label,
-    type: 'number',
-    answer,
-    tolerance: 0.001,
-    points: 1,
-    explain: '',
-    comment: false,
-    comment_hint: '',
-  }
+// randomUUID needs Safari 15.4; older teacher devices still fall back to a unique id.
+const newId = (prefix: string) => `${prefix}_${crypto.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`}`
+
+function addQuestion(type: 'number' | 'essay') {
+  const question = { id: newId('q'), label: '', type, points: 1 }
+  questions.push(type === 'essay' ? question : {
+    ...question, answer: null, tolerance: 0.001, explain: '', comment: false, comment_hint: '',
+  })
 }
-function addQuestion() { questions.push(newQuestion('', null)) }
-function addCheck() { checks.push({ id: `c${checks.length + 1}`, label: '', op: 'present', points: 1, explain: '' }) }
+function removeQuestion(question: any) {
+  const index = questions.indexOf(question)
+  if (index !== -1) questions.splice(index, 1)
+}
+function addCheck() { checks.push({ id: newId('c'), label: '', op: 'present', points: 1, explain: '' }) }
 
 /** One "you must have run this analysis" check per analysis in the teacher's own
  *  solved file — the fastest way to turn a worked example into a rubric. */
 function addAnalysisChecks() {
   for (const a of schema.value) {
     if (checks.some((c) => c.analysis === a.name)) continue
-    checks.push({ id: `c${checks.length + 1}`, label: a.name, op: 'ran', analysis: a.name, points: 1, explain: '' })
+    checks.push({ id: newId('c'), label: a.name, op: 'ran', analysis: a.name, points: 1, explain: '' })
   }
 }
 
@@ -350,6 +383,7 @@ async function uploadAndPick(event: Event) {
   try {
     const fd = new FormData()
     fd.append('file', file)
+    fd.append('student_access', 'false')
     const { data } = await api.post(`/classes/${props.classId}/files`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
@@ -364,9 +398,15 @@ async function uploadAndPick(event: Event) {
   }
 }
 
-function normaliseAnswer(q: any) {
-  if (q.type !== 'text' || typeof q.answer !== 'string' || !q.answer.includes(';')) return q.answer
-  return q.answer.split(';').map((s: string) => s.trim()).filter(Boolean)
+function serialiseQuestion(q: any) {
+  if (q.type === 'essay') {
+    const { answer, tolerance, explain, comment, comment_hint, ...question } = q
+    return question
+  }
+  const answer = q.type === 'text' && typeof q.answer === 'string' && q.answer.includes(';')
+    ? q.answer.split(';').map((s: string) => s.trim()).filter(Boolean)
+    : q.answer
+  return { ...q, answer }
 }
 
 function detailText(e: any, fallback: string) {
@@ -375,6 +415,7 @@ function detailText(e: any, fallback: string) {
 }
 
 async function create() {
+  if (saving.value || uploading.value) return
   error.value = ''
   if (!form.title.trim()) { error.value = 'Vui lòng nhập tiêu đề'; return }
   if (!form.description.trim()) { error.value = 'Vui lòng nhập mô tả / yêu cầu gửi bài'; return }
@@ -387,12 +428,13 @@ async function create() {
       deadline: new Date(form.deadline).toISOString(),
       max_score: Number(form.max_score) || 0,
       assignment_type: form.assignment_type,
+      is_open: !isExam.value,
       file_id: form.file_id ?? undefined,
       group_size: isExam.value ? 1 : form.group_size,
       allow_resubmit: isExam.value ? false : form.allow_resubmit,
       allow_sharing: isExam.value ? false : form.allow_sharing,
       answer_key: questions.length
-        ? { questions: questions.map((q) => ({ ...q, answer: normaliseAnswer(q) })) }
+        ? { questions: questions.map(serialiseQuestion) }
         : undefined,
       grading_config: checks.length ? { checks } : undefined,
     }

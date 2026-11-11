@@ -213,6 +213,19 @@ async function revokeShareLink() {
 }
 
 async function openInJamovi(f: any) {
+  // Safari only permits a new tab during the click, before any network await.
+  const tab = window.open('about:blank', '_blank')
+  if (!tab) {
+    alert('Trình duyệt đã chặn tab mới. Hãy cho phép cửa sổ bật lên cho HeyStat rồi thử lại.')
+    return
+  }
+  tab.opener = null
+  try {
+    tab.document.title = 'Đang mở HeyStat…'
+    tab.document.body.textContent = 'Đang mở tệp trong HeyStat…'
+  } catch {
+    // The placeholder text is cosmetic; the navigation below still works.
+  }
   try {
     // 1. Download the file blob via the authenticated API
     const token = localStorage.getItem('access_token')
@@ -229,15 +242,15 @@ async function openInJamovi(f: any) {
     const text = await openResp.text()
     const lines = text.trim().split('\n')
     const result = JSON.parse(lines[lines.length - 1])
-    if (result.status === 'OK' && result.url) {
-      // Jamovi returns a relative URL like "abc123/" — prefix with / to make it root-relative
-      const url = result.url.startsWith('/') ? result.url : '/' + result.url
-      // Pass file ID so the toolbar can overwrite the same file on save
-      window.open(url + '?hs_file_id=' + f.id, '_blank')
-    } else {
+    if (result.status !== 'OK' || !result.url) {
       throw new Error(result.message || 'Không thể mở file')
     }
+    // Jamovi returns a relative URL like "abc123/" — prefix with / to make it root-relative
+    const url = result.url.startsWith('/') ? result.url : '/' + result.url
+    // Pass file ID so the toolbar can overwrite the same file on save
+    if (!tab.closed) tab.location.replace(url + '?hs_file_id=' + f.id)
   } catch (err: any) {
+    tab.close()
     alert(err?.message ?? 'Không thể mở file trong Jamovi')
   }
 }

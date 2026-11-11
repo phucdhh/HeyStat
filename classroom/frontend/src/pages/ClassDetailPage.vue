@@ -18,6 +18,8 @@
                 @click="activeTab = tab.key">{{ tab.label }}</button>
       </div>
 
+      <p v-if="filesError" class="error" role="alert">{{ filesError }}</p>
+
       <!-- ── Assignments tab ───────────────────────────── -->
       <div v-if="activeTab === 'assignments'">
         <div class="tab-toolbar" v-if="auth.isTeacher">
@@ -28,6 +30,7 @@
           <RouterLink :to="`/classes/${classId}/assignments/${a.id}`" class="item-title">{{ a.title }}</RouterLink>
           <span class="meta">Hạn nộp: {{ a.deadline ? fmtDate(a.deadline) : 'Không có' }}</span>
           <span class="kind-tag">{{ kindLabel(a) }}</span>
+          <span v-if="a.is_open === false" class="chip miss">Đang khoá</span>
           <span v-if="a.answer_key?.questions?.length || a.grading_config?.checks?.length" class="chip auto">chấm tự động</span>
           <span v-if="a.file_id" class="meta">📊 có bộ dữ liệu</span>
           <span class="score-tag">{{ a.max_score }} điểm</span>
@@ -78,12 +81,28 @@
           </button>
           <input ref="fileInputRef" type="file" style="display:none" @change="uploadFile" />
         </div>
+        <p v-if="canManageFiles" class="file-access-hint">
+          Khoá tệp chỉ chặn truy cập mới, không thu hồi được tệp đã tải xuống hoặc dữ liệu đang mở.
+          Tệp vẫn bị khoá nếu bất kỳ bài tập nào dùng tệp đang khoá; hãy mở bài tập đó trước.
+        </p>
         <div v-if="!files.length" class="empty">Chưa có tệp.</div>
         <div v-for="f in files" :key="f.id" class="list-item">
-          <span class="item-title link" @click="openInJamovi(f.id, f.file_name)">{{ f.file_name }}</span>
+          <button type="button" class="item-title file-open" :disabled="!auth.isTeacher && f.is_locked"
+                  :title="!auth.isTeacher && f.is_locked ? 'Tệp đang khoá, chưa thể mở' : 'Mở trong HeyStat'"
+                  @click="openInJamovi(f)">{{ f.file_name }}</button>
           <span class="meta">{{ f.file_size ? (f.file_size / 1024).toFixed(1) + ' KB' : '' }}</span>
-          <button class="btn-icon" @click="downloadFile(f.id, f.file_name)" title="Tải xuống">↓ Tải</button>
-          <button v-if="auth.isTeacher" class="btn-icon" @click="deleteFile(f.id)" title="Xoá">🗑️</button>
+          <span v-if="f.is_locked" class="chip miss">Đang khoá với học viên</span>
+          <span v-else-if="canManageFiles" class="chip auto">Đang mở cho học viên</span>
+          <span v-if="canManageFiles && f.is_locked && f.student_access" class="meta">Bài tập dùng tệp đang khoá</span>
+          <button class="btn-icon" :disabled="!auth.isTeacher && f.is_locked"
+                  @click="downloadFile(f)" title="Tải xuống">↓ Tải</button>
+          <button v-if="canManageFiles" class="btn-sm" :disabled="fileAccessPending[f.id]"
+                  :aria-label="`${f.is_locked ? 'Mở cho học viên' : 'Khoá tệp'}: ${f.file_name}`"
+                  @click="toggleFileAccess(f)">
+            {{ fileAccessPending[f.id] ? 'Đang cập nhật…' : f.is_locked ? 'Mở cho học viên' : 'Khoá tệp' }}
+          </button>
+          <button v-if="auth.isTeacher" class="btn-icon" :disabled="fileAccessPending[f.id]" @click="deleteFile(f.id)" title="Xoá">🗑️</button>
+          <p v-if="fileErrors[f.id]" class="error file-error" role="alert">{{ fileErrors[f.id] }}</p>
         </div>
       </div>
 
@@ -248,6 +267,10 @@ const assignments = ref<any[]>([])
 const lessons = ref<any[]>([])
 const quizzes = ref<any[]>([])
 const files = ref<any[]>([])
+const filesError = ref('')
+const fileErrors = ref<Record<string, string>>({})
+const fileAccessPending = ref<Record<string, boolean>>({})
+const canManageFiles = computed(() => auth.isAdmin || (auth.isTeacher && cls.value?.teacher_id === auth.user?.id))
 const members = ref<any[]>([])
 const enrollmentCode = ref('')
 const showCodeEditor = ref(false)
@@ -346,8 +369,9 @@ async function copyCode() {
 // ── Assignment creation ─────────────────────────────
 const showCreateAssignment = ref(false)
 
-function onAssignmentCreated(a: any) {
+async function onAssignmentCreated(a: any) {
   assignments.value.unshift(a)
+  await reloadFiles()
 }
 function onFileUploaded(f: any) {
   files.value.push({ ...f, created_at: new Date().toISOString() })
@@ -400,9 +424,10 @@ function openEditAssignment(a: any) {
   editAssignment.value = a
   showEditAssignment.value = true
 }
-function onAssignmentSaved(updated: any) {
+async function onAssignmentSaved(updated: any) {
   const idx = assignments.value.findIndex(a => a.id === updated.id)
   if (idx !== -1) assignments.value[idx] = updated
+  await reloadFiles()
 }
 
 async function uploadFile(event: Event) {
@@ -426,27 +451,60 @@ async function uploadFile(event: Event) {
   }
 }
 
-async function openInJamovi(fileId: string, fileName: string) {
+async function fileErrorMessage(e: any, fallback: string): Promise<string> {
+  let data = e?.response?.data
+  // Blob downloads also return API errors as blobs; decode the actual lock reason.
+  if (data instanceof Blob) {
+    try { data = JSON.parse(await data.text()) } catch { /* use the original error */ }
+  }
+  const detail = data?.detail
+  return Array.isArray(detail) ? detail.map((x: any) => x.msg).join(', ') : detail ?? e?.message ?? fallback
+}
+
+async function reloadFiles() {
+  filesError.value = ''
   try {
-    await openClassFileInJamovi(classId, fileId, fileName)
-  } catch {
-    alert('Không thể mở file trong Jamovi')
+    const { data } = await api.get(`/classes/${classId}/files`)
+    files.value = data
+  } catch (e: any) {
+    filesError.value = `Chưa cập nhật được trạng thái tệp. Hãy tải lại trang. ${await fileErrorMessage(e, 'Không tải được danh sách tệp')}`
   }
 }
 
-async function downloadFile(fileId: string, fileName: string) {
+async function toggleFileAccess(f: any) {
+  if (!canManageFiles.value || fileAccessPending.value[f.id]) return
+  const opening = !!f.is_locked
+  if (!opening && !confirm(`Khoá tệp “${f.file_name}” với học viên?\n\nKhông thể thu hồi tệp đã tải xuống hoặc dữ liệu đang mở. Tệp cũng sẽ bị khoá nếu bất kỳ bài tập nào dùng tệp đang khoá.`)) return
+  fileAccessPending.value[f.id] = true
+  fileErrors.value[f.id] = ''
   try {
-    const res = await api.get(`/classes/${classId}/files/${fileId}/download`, {
-      responseType: 'blob',
-    })
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
+    const { data } = await api.patch(`/classes/${classId}/files/${f.id}`, { student_access: opening })
+    Object.assign(f, data)
   } catch (e: any) {
-    alert('Lỗi khi tải file')
+    fileErrors.value[f.id] = await fileErrorMessage(e, 'Không cập nhật được quyền truy cập tệp')
+    // A referencing assignment may have closed since this list was loaded.
+    await reloadFiles()
+  } finally { fileAccessPending.value[f.id] = false }
+}
+
+async function openInJamovi(f: any) {
+  if (!auth.isTeacher && f.is_locked) return
+  fileErrors.value[f.id] = ''
+  try {
+    // Do not await anything before this helper: Safari needs the tab opened in the click.
+    await openClassFileInJamovi(classId, f.id, f.file_name)
+  } catch (e: any) {
+    fileErrors.value[f.id] = await fileErrorMessage(e, 'Không thể mở tệp trong HeyStat')
+  }
+}
+
+async function downloadFile(f: any) {
+  if (!auth.isTeacher && f.is_locked) return
+  fileErrors.value[f.id] = ''
+  try {
+    await downloadCsv(`/classes/${classId}/files/${f.id}/download`, f.file_name)
+  } catch (e: any) {
+    fileErrors.value[f.id] = await fileErrorMessage(e, 'Lỗi khi tải tệp')
   }
 }
 
@@ -486,6 +544,7 @@ async function deleteAssignment(a: any) {
   try {
     await api.delete(`/classes/${classId}/assignments/${a.id}`)
     assignments.value = assignments.value.filter(x => x.id !== a.id)
+    await reloadFiles()
   } catch (e: any) {
     alert(e?.response?.data?.detail ?? 'Lỗi khi xoá bài tập')
   }
@@ -539,7 +598,10 @@ onMounted(async () => {
 .list-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--amber-100); flex-wrap: wrap; }
 .item-title { font-weight: 600; color: var(--amber-800); text-decoration: none; flex: 1; }
 .item-title:hover { color: var(--amber-900); text-decoration: underline; }
-.item-title.link { cursor: pointer; }
+.file-open { border: none; background: transparent; padding: 0; text-align: left; font: inherit; font-weight: 600; cursor: pointer; overflow-wrap: anywhere; min-width: 0; }
+.file-open:disabled { color: var(--color-text-muted); cursor: not-allowed; text-decoration: none; }
+.file-access-hint { color: var(--color-text-muted); font-size: 0.82rem; line-height: 1.5; margin: 0 0 1rem; }
+.list-item .file-error { flex-basis: 100%; margin: 0; }
 .meta { font-size: 0.8rem; color: var(--color-text-muted); }
 .code-box { margin: 0 0 1.25rem; padding: 0.75rem 0.9rem; background: var(--amber-50); border: 1px solid var(--amber-200); border-radius: 9px; }
 .cb-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }

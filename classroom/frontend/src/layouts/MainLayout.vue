@@ -1,6 +1,18 @@
 <template>
-  <div class="layout">
-    <nav class="sidebar">
+  <div class="layout" :class="{ 'sidebar-closed': !sidebarOpen, 'submit-layout': isSubmitWork }" @keydown.esc="closeSidebar">
+    <button ref="sidebarToggle" type="button" class="sidebar-toggle" :class="{ closed: !sidebarOpen }"
+            :aria-expanded="sidebarOpen" aria-controls="main-navigation"
+            :aria-label="sidebarOpen ? 'Thu gọn điều hướng' : 'Mở điều hướng'"
+            :title="sidebarOpen ? 'Thu gọn điều hướng' : 'Mở điều hướng'"
+            @click="sidebarOpen = !sidebarOpen">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path v-if="sidebarOpen" d="M15 5l-7 7 7 7M4 4v16" />
+        <path v-else d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+    <button v-show="sidebarOpen" class="sidebar-backdrop" type="button" aria-label="Đóng điều hướng"
+            tabindex="-1" @click="closeSidebar" />
+    <nav v-show="sidebarOpen" id="main-navigation" class="sidebar" aria-label="Điều hướng chính">
       <div class="logo">📊 HeyStat</div>
 
       <div class="nav-section">
@@ -56,7 +68,7 @@
       </div>
     </nav>
 
-    <main class="content">
+    <main class="content" :inert="smallScreen && sidebarOpen">
       <RouterView />
     </main>
 
@@ -85,17 +97,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notifications'
 
 const auth = useAuthStore()
 const notifStore = useNotifStore()
 const router = useRouter()
+const route = useRoute()
 const showNotif = ref(false)
+const isSubmitWork = computed(() => route.name === 'SubmitWork')
+const screenQuery = window.matchMedia('(max-width: 900px)')
+const smallScreen = ref(screenQuery.matches)
+const sidebarOpen = ref(!isSubmitWork.value && !smallScreen.value)
+const sidebarToggle = ref<HTMLButtonElement | null>(null)
 
-onMounted(() => notifStore.fetch())
+function closeSidebar() {
+  if (!sidebarOpen.value) return
+  sidebarOpen.value = false
+  sidebarToggle.value?.focus()
+}
+function updateScreen(event: MediaQueryListEvent) {
+  smallScreen.value = event.matches
+  if (event.matches) closeSidebar()
+}
+watch(() => route.fullPath, () => {
+  sidebarOpen.value = !isSubmitWork.value && !smallScreen.value
+})
+onMounted(() => {
+  notifStore.fetch()
+  screenQuery.addEventListener('change', updateScreen)
+})
+onUnmounted(() => screenQuery.removeEventListener('change', updateScreen))
 
 const initials = computed(() => {
   const name = auth.user?.full_name || auth.user?.email || ''
@@ -122,6 +156,16 @@ function formatTime(iso: string) {
 
 <style scoped>
 .layout { display: flex; min-height: 100vh; }
+.sidebar-toggle {
+  position: fixed; top: 0.5rem; left: 0.5rem; z-index: 110;
+  display: grid; place-items: center; width: 44px; height: 44px;
+  border: 1px solid #fbbf24; border-radius: 7px;
+  background: #fffbeb; color: #92400e; cursor: pointer;
+}
+.sidebar-toggle.closed { background: #1a1a2e; border-color: #1a1a2e; color: #fff; }
+.sidebar-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+.sidebar-toggle:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.sidebar-backdrop { display: none; }
 
 /* ── Sidebar ──────────────────────────────────────────── */
 .sidebar {
@@ -143,7 +187,7 @@ function formatTime(iso: string) {
   font-size: 1.15rem;
   font-weight: 800;
   color: var(--amber-300);
-  padding: 0.4rem 0.5rem 1rem;
+  padding: 0.4rem 0.5rem 1rem 2.8rem;
   letter-spacing: 0.02em;
   border-bottom: 1px solid rgba(251,191,36,0.2);
   margin-bottom: 0.5rem;
@@ -254,8 +298,19 @@ function formatTime(iso: string) {
   margin-left: 230px;
   padding: 2rem 2.5rem;
   flex: 1;
+  min-width: 0;
   min-height: 100vh;
   background: var(--color-page-bg);
+}
+.sidebar-closed .content { margin-left: 0; padding-top: 3.75rem; }
+.submit-layout { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+.submit-layout .content { height: 100%; min-height: 0; padding: 0.5rem; overflow: hidden; }
+@media (max-width: 900px) {
+  .content { margin-left: 0; padding: 3.75rem 1rem 1rem; }
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 99;
+    border: 0; background: rgba(0, 0, 0, 0.35);
+  }
 }
 
 /* ── Notification panel ────────────────────────────────── */

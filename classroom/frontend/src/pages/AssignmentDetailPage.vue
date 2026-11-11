@@ -6,9 +6,9 @@
       <RouterLink :to="`/classes/${classId}`" class="back-link">← Quay lại lớp</RouterLink>
       <div class="title-row">
         <h1>{{ assignment.title }}</h1>
-        <button v-if="auth.isTeacher" class="btn-secondary" @click="showEditAssignment = true">✏️ Sửa bài tập</button>
+        <button v-if="auth.isTeacher" class="btn-secondary" :disabled="changingAccess" @click="showEditAssignment = true">✏️ Sửa bài tập</button>
       </div>
-      <p class="desc">{{ assignment.description }}</p>
+      <p v-if="auth.isTeacher || isOpen" class="desc">{{ assignment.description }}</p>
       <div class="meta-row">
         <span>Hạn nộp: <strong>{{ assignment.deadline ? fmtDate(assignment.deadline) : '—' }}</strong></span>
         <span>Loại: <strong>{{ typeLabel(assignment.assignment_type) }}</strong></span>
@@ -16,8 +16,30 @@
         <span v-if="assignment.group_size > 1">Nhóm tối đa: <strong>{{ assignment.group_size }} người</strong></span>
       </div>
 
+      <div v-if="auth.isTeacher" class="access-panel">
+        <div class="access-header">
+          <span :class="isOpen ? 'badge-open' : 'badge-closed'" role="status">
+            {{ isOpen ? 'Đang mở cho học viên' : 'Bài đang khoá' }}
+          </span>
+          <button :class="isOpen ? 'btn-secondary' : 'btn-primary'" :disabled="changingAccess || showEditAssignment"
+                  @click="toggleAssignmentAccess">
+            {{ changingAccess ? 'Đang cập nhật…' : isOpen ? 'Khoá bài' : 'Mở bài cho học viên' }}
+          </button>
+        </div>
+        <p>Khoá bài sẽ chặn học viên xem đề, mở dữ liệu và nộp bài. Không thể thu hồi tệp đã tải xuống hoặc dữ liệu đang mở.</p>
+        <p v-if="assignment.file_id">Mở bài sẽ mở quyền truy cập tệp đính kèm. Nếu tệp dùng chung với bài khác đang khoá, tệp vẫn bị khoá.</p>
+        <p v-if="accessError" class="error" role="alert">{{ accessError }}</p>
+      </div>
+      <div v-else-if="!isOpen" class="access-panel closed-notice" role="status">
+        <h3>Bài đang khoá</h3>
+        <p>Vui lòng chờ giáo viên mở bài. Bạn chưa thể xem đề, mở dữ liệu, làm bài hoặc nộp bài.</p>
+        <p>Lịch sử bài nộp trước đó vẫn được giữ lại.</p>
+      </div>
+      <p v-if="classFilesError" class="error" role="alert">{{ classFilesError }}</p>
+      <p v-if="downloadError" class="error" role="alert">{{ downloadError }}</p>
+
       <AssignmentEditModal :class-id="classId" :assignment="assignment"
-                           v-model:show="showEditAssignment" @saved="assignment = $event" />
+                           v-model:show="showEditAssignment" @saved="onAssignmentSaved" />
 
       <!-- ════ TEACHER VIEW ════════════════════════════════════════ -->
       <GradingConfigEditor v-if="auth.isTeacher"
@@ -71,7 +93,7 @@
       <template v-if="!auth.isTeacher">
 
         <!-- Group management -->
-        <div v-if="assignment.group_size > 1 && assignment.assignment_type !== 'exam'" class="section">
+        <div v-if="isOpen && assignment.group_size > 1 && assignment.assignment_type !== 'exam'" class="section">
           <div class="section-header">
             <h3>Nhóm làm bài</h3>
           </div>
@@ -107,12 +129,13 @@
         </div>
 
         <!-- Class files -->
-        <div v-if="classFiles.length" class="section">
+        <div v-if="isOpen && classFiles.length" class="section">
           <h3>Tệp của lớp</h3>
           <div v-for="f in classFiles" :key="f.id" class="file-row">
-            <span>{{ f.filename }}</span>
-            <a href="#" class="link"
-               @click.prevent="saveFile(`/classes/${classId}/files/${f.id}/download`, f.file_name)">Tải xuống</a>
+            <span>{{ f.file_name }}</span>
+            <span v-if="f.is_locked" class="badge-closed">Tệp đang khoá</span>
+            <button v-else class="btn-sm"
+                    @click="saveFile(`/classes/${classId}/files/${f.id}/download`, f.file_name)">Tải xuống</button>
           </div>
         </div>
 
@@ -122,12 +145,12 @@
             <h3>Bài nộp của tôi</h3>
             <div class="header-actions">
               <RouterLink
-                v-if="!isPastDeadline"
+                v-if="canSubmit"
                 :to="`/classes/${classId}/assignments/${assignmentId}/submit`"
                 class="btn-primary work-link"
               >📊 Làm bài trong HeyStat</RouterLink>
               <button v-if="canSubmit" class="btn-primary" @click="openSubmitModal">
-                {{ mySubmissions.length ? 'Nộp lại' : 'Nộp bài' }}
+                {{ hasFinalSubmission ? 'Nộp lại' : 'Nộp bài' }}
               </button>
               <span v-else-if="isPastDeadline" class="badge-closed">Đã hết hạn</span>
             </div>
@@ -136,7 +159,7 @@
           <div v-for="s in mySubmissions" :key="s.id" class="sub-block">
             <div class="sub-row">
               <span>{{ fmtDate(s.submitted_at) }}</span>
-              <span :class="`status-${s.status}`">{{ statusLabel(s.status) }}</span>
+              <span :class="s.is_final ? 'status-submitted' : 'muted'">{{ s.is_final ? 'Đã nộp' : 'Bản lưu trước đó' }}</span>
               <span v-if="s.is_final" class="final-tag">✓ Bài cuối</span>
             </div>
           </div>
@@ -149,7 +172,7 @@
       <div class="modal wide">
         <h2>Bài nộp</h2>
         <div v-if="evidenceLoading" class="loading">Đang tải…</div>
-        <SubmissionEvidence v-else-if="evidence" :submission="evidence" />
+        <SubmissionEvidence v-else-if="evidence" :submission="evidence" :questions="assignment?.answer_key?.questions ?? []" />
         <div class="modal-actions">
           <button class="btn-secondary" @click="showEvidence = false">Đóng</button>
         </div>
@@ -212,6 +235,11 @@ const loading = ref(true)
 const assignment = ref<any>(null)
 const showEditAssignment = ref(false)
 const classFiles = ref<any[]>([])
+const changingAccess = ref(false)
+const accessError = ref('')
+const classFilesError = ref('')
+const downloadError = ref('')
+const isOpen = computed(() => assignment.value?.is_open === true)
 const mySubmissions = ref<any[]>([])
 const groups = ref<any[]>([])
 const myGroup = ref<any>(null)
@@ -242,9 +270,10 @@ const isPastDeadline = computed(() =>
   assignment.value?.deadline && new Date(assignment.value.deadline) < new Date()
 )
 
+const hasFinalSubmission = computed(() => mySubmissions.value.some(s => s.is_final))
 const canSubmit = computed(() => {
-  if (!assignment.value || isPastDeadline.value) return false
-  if (!assignment.value.allow_resubmit && mySubmissions.value.length > 0) return false
+  if (!assignment.value || !isOpen.value || isPastDeadline.value) return false
+  if (!assignment.value.allow_resubmit && hasFinalSubmission.value) return false
   if (assignment.value.group_size > 1 && assignment.value.assignment_type !== 'exam' && !myGroup.value) return false
   return true
 })
@@ -258,10 +287,6 @@ function typeLabel(t: string) {
   return { homework: 'Bài tập về nhà', project: 'Thực hành', exam: 'Kiểm tra' }[t] ?? t
 }
 
-function statusLabel(s: string) {
-  return { submitted: 'Đã nộp', graded: 'Đã chấm', draft: 'Nháp' }[s] ?? s
-}
-
 function formatSize(bytes: number) {
   if (!bytes) return '0 B'
   if (bytes < 1024) return bytes + ' B'
@@ -269,14 +294,56 @@ function formatSize(bytes: number) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
-// The API only accepts a Bearer header, so a plain <a href> download would 401
+async function errorMessage(e: any, fallback: string) {
+  let data = e?.response?.data
+  if (data instanceof Blob) {
+    try { data = JSON.parse(await data.text()) } catch {}
+  }
+  return typeof data?.detail === 'string' ? data.detail : e?.message ?? fallback
+}
+
+async function reloadClassFiles() {
+  classFilesError.value = ''
+  try {
+    const { data } = await api.get(`/classes/${classId}/files`)
+    classFiles.value = data
+  } catch (e: any) {
+    classFilesError.value = await errorMessage(e, 'Không cập nhật được trạng thái tệp. Hãy tải lại trang.')
+  }
+}
+
+async function onAssignmentSaved(updated: any) {
+  assignment.value = updated
+  await reloadClassFiles()
+}
+
+async function toggleAssignmentAccess() {
+  if (changingAccess.value) return
+  const opening = !isOpen.value
+  if (!opening && !confirm('Khoá bài với học viên? Học viên sẽ không thể xem đề, mở dữ liệu hoặc nộp bài. Không thể thu hồi tệp đã tải xuống hoặc dữ liệu đang mở.')) return
+  changingAccess.value = true
+  accessError.value = ''
+  try {
+    const { data } = await api.patch(`/classes/${classId}/assignments/${assignmentId}`, { is_open: opening })
+    await onAssignmentSaved(data)
+  } catch (e: any) {
+    accessError.value = await errorMessage(e, 'Không cập nhật được trạng thái bài')
+  } finally { changingAccess.value = false }
+}
+
+// The API requires a Bearer header, not a plain download link.
 async function saveFile(url: string, name: string) {
-  const resp = await api.get(url, { responseType: 'blob' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(resp.data as Blob)
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(link.href)
+  downloadError.value = ''
+  try {
+    const resp = await api.get(url, { responseType: 'blob' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(resp.data as Blob)
+    link.download = name
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (e: any) {
+    downloadError.value = await errorMessage(e, 'Không tải được tệp')
+  }
 }
 
 // ── Teacher: load all submissions ──────────────────────────────
@@ -409,6 +476,10 @@ h1 { margin: 0.5rem 0 0.25rem; color: var(--amber-800); }
 .desc { color: var(--color-text-muted); margin-bottom: 1rem; line-height: 1.6; }
 .meta-row { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem; color: var(--color-text-muted); margin-bottom: 1.75rem; }
 .meta-row strong { color: var(--amber-800); }
+.access-panel { padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--amber-300); border-radius: 8px; background: var(--amber-50); }
+.access-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.access-panel p { margin: 0.5rem 0 0; font-size: 0.85rem; }
+.badge-open { background: #D1FAE5; color: #065F46; padding: 0.2rem 0.6rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; }
 .section { margin-bottom: 1.75rem; }
 .section-title { color: var(--amber-800); font-size: 1.05rem; font-weight: 700; margin: 0 0 1rem; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }

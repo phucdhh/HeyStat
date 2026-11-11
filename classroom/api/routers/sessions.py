@@ -18,6 +18,7 @@ from models import Assignment, Enrollment, AssignmentGroup, AssignmentGroupMembe
 from auth.deps import get_current_user
 from auth.redis_client import get_redis
 from config import get_settings
+from services.assignment_access import require_assignment_open, require_file_open
 
 settings = get_settings()
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -86,6 +87,7 @@ async def get_session_token(
     if not enr.scalar_one_or_none():
         raise HTTPException(403, "Bạn chưa tham gia lớp học này")
 
+    require_assignment_open(assignment)
     collab_role = "writer"
     session_path: str
 
@@ -113,12 +115,14 @@ async def get_session_token(
     if assignment.file_id:
         fr = await db.execute(select(ClassFile).where(ClassFile.id == assignment.file_id))
         cf = fr.scalar_one_or_none()
-        if cf:
-            ext = Path(cf.file_name).suffix or ".omv"
-            dataset = {
-                "file_name": f"Dataset_{str(current_user.id)[:8]}_{str(assignment.id)[:8]}{ext}",
-                "download_url": f"/api/v1/assignments/{assignment.id}/dataset",
-            }
+        if cf is None:
+            raise HTTPException(404, "Bộ dữ liệu không tồn tại")
+        await require_file_open(db, cf)
+        ext = Path(cf.file_name).suffix or ".omv"
+        dataset = {
+            "file_name": f"Dataset_{str(current_user.id)[:8]}_{str(assignment.id)[:8]}{ext}",
+            "download_url": f"/api/v1/assignments/{assignment.id}/dataset",
+        }
 
     # Store token in Redis
     r_client = await get_redis()
@@ -161,8 +165,10 @@ async def revoke_session_token(
 @router.post("/snapshot", status_code=201)
 async def save_snapshot(
     assignment_id: uuid.UUID = Form(...),
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     report: Optional[str] = Form(None),
+    answers: Optional[str] = Form(None),
+    draft_id: Optional[uuid.UUID] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -173,9 +179,12 @@ async def save_snapshot(
     read from the saved file itself; the report only stands in for a document whose
     analyses had not run yet, and nothing in it is stored or shown to a teacher.
     """
-    from routers.submissions import _create_submission
+    from routers.submissions import _create_submission, _parse_json_field
 
-    return await _create_submission(assignment_id, current_user, db, file, is_final=False, report=report)
+    return await _create_submission(
+        assignment_id, current_user, db, file, is_final=False, report=report,
+        answers=_parse_json_field(answers, "answers"), draft_id=draft_id,
+    )
 
 
 @router.get("/observe/{session_id}", response_model=SessionTokenResponse)

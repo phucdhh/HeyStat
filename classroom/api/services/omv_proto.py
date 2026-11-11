@@ -93,9 +93,10 @@ def _int32(buf: bytes, number: int) -> Optional[int]:
     return None
 
 
-# jamovi formats numbers with the rules in client/common/formatting.ts; these are
-# the settings a fresh jamovi install uses (significant figures, 3 digits).
-DEFAULT_SETTINGS = {"t": "sf", "n": 3, "pt": "dp", "p": 3, "ds": "."}
+# Mirror client/common/formatting.ts, but use Classroom's fixed 3dp default
+# rather than jamovi's legacy 3 significant figures. Decoded tables do not read
+# stored editor preferences; only display text is rounded, never raw values.
+DEFAULT_SETTINGS = {"t": "dp", "n": 3, "pt": "dp", "p": 3, "ds": "."}
 _MIN_NS = 1e-3
 _MAX_NS = 1e6
 
@@ -109,7 +110,7 @@ def determ_format(values: list, type_: str, format_: str,
     min_abs_ns = math.inf
     max_abs_expnt = -math.inf
     for value in values:
-        if value is None or isinstance(value, str) or math.isnan(value):
+        if value is None or isinstance(value, str) or not math.isfinite(value):
             continue
         if "log10" in formats:
             value = 10 ** value
@@ -145,7 +146,7 @@ def determ_format(values: list, type_: str, format_: str,
     else:
         max_ns = math.inf
         min_ns = -math.inf
-        dp, sf = n, n + 1
+        dp, sf = (0 if type_ == "integer" else n), n + 1
 
     expw = 0
     if math.isfinite(max_abs_expnt):
@@ -172,6 +173,10 @@ def format_number(value: Any, fmt: dict) -> str:
         return ""
     if isinstance(value, str):
         return value
+    # ResultsCell.i bypasses numeric formatting in jamovi, even in a number
+    # column (e.g. N/df). A real-valued 7.0 must still print as 7.000.
+    if isinstance(value, int):
+        return str(value)
     if math.isnan(value):
         return "NaN"
     if not math.isfinite(value):

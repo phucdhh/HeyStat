@@ -117,6 +117,7 @@ class ClassFile(Base):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     file_size: Mapped[Optional[int]] = mapped_column(BigInteger)
     mime_type: Mapped[Optional[str]] = mapped_column(String(100))
+    student_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = now_col()
 
     class_: Mapped["Class"] = relationship(back_populates="files")
@@ -133,6 +134,7 @@ class Assignment(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("class_files.id"))
     assignment_type: Mapped[str] = mapped_column(String(20), default="homework")
+    is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     max_score: Mapped[float] = mapped_column(Numeric(5, 2), default=10.00)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     allow_resubmit: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -1,7 +1,7 @@
 <template>
   <section class="grading">
     <div class="head">
-      <h3>Tiêu chí chấm tự động</h3>
+      <h3>Câu hỏi và tiêu chí chấm</h3>
       <div class="row">
         <button class="btn-sm" :disabled="regrading" @click="regrade">
           {{ regrading ? 'Đang chấm lại…' : 'Chấm lại bài đã nộp' }}
@@ -18,33 +18,53 @@
     <p v-if="regradeResult" class="saved">{{ regradeResult }}</p>
     <p v-if="regradeError" class="error">{{ regradeError }}</p>
 
-    <h4>Phần 1 – Câu hỏi trên thanh bên</h4>
-    <div v-for="(q, i) in questions" :key="i" class="block">
+    <h4>Điền đáp án (chấm tự động)</h4>
+    <div class="row">
+      <button class="btn-sm" type="button" @click="addQuestion('number')">+ Thêm câu điền đáp án</button>
+      <span v-if="objectiveQuestions.length" class="muted">{{ objectiveQuestions.length }} câu · {{ objectivePoints }} điểm tự động</span>
+    </div>
+    <p class="hint">
+      Có thể thêm ô lời giải tự do (không bắt buộc); học viên có thể viết lời giải ngay cả khi chưa điền đáp án.
+      Lời giải không được chấm tự động.
+    </p>
+    <div v-for="q in objectiveQuestions" :key="q.id" class="block">
       <div class="row">
         <input v-model="q.label" class="grow" placeholder="Nội dung câu hỏi" />
         <select v-model="q.type" title="Loại đáp án">
           <option value="number">Số (± sai số)</option>
           <option value="text">Chữ (nhiều đáp án đúng)</option>
-          <option value="essay">Tự luận (thầy/cô chấm tay)</option>
         </select>
-        <input v-if="q.type !== 'essay'" v-model="q.answer" class="mid" :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
-        <span v-else class="grow muted">Học viên viết bài; phần này thầy/cô đọc và cho điểm.</span>
+        <input :value="Array.isArray(q.answer) ? q.answer.join('; ') : q.answer" class="mid"
+               @input="q.answer = ($event.target as HTMLInputElement).value"
+               :placeholder="q.type === 'number' ? 'Đáp án' : 'Đáp án (nhiều cách viết phân cách bằng ;)'" />
         <input v-if="q.type === 'number'" v-model.number="q.tolerance" class="num" type="number" step="any" title="Sai số cho phép" />
-        <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm" />
-        <button class="btn-sm danger" @click="questions.splice(i, 1)">✕</button>
+        <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm tự động" />
+        <button class="btn-sm danger" type="button" title="Xoá câu hỏi" @click="removeQuestion(q)">✕</button>
       </div>
       <div class="row">
-        <input v-model="q.explain" class="grow" placeholder="Giải thích khi học viên trả lời sai" />
-        <label class="chk"><input type="checkbox" v-model="q.comment" /> Thêm ô lời giải</label>
+        <input v-model="q.explain" class="grow" placeholder="Giải thích khi học viên trả lời sai (tuỳ chọn)" />
+        <label class="chk"><input type="checkbox" v-model="q.comment" /> Thêm ô lời giải tự do (tuỳ chọn)</label>
         <input v-if="q.comment" v-model="q.comment_hint" class="grow"
                placeholder="Nhãn hiển thị trên ô lời giải (vd. 'Cách bạn làm / lý do chọn giá trị này')" />
       </div>
     </div>
+
+    <h4>Tự luận / nhận xét (giáo viên chấm)</h4>
     <div class="row">
-      <button class="btn-sm" @click="addQuestion">+ Thêm câu hỏi</button>
+      <button class="btn-sm" type="button" @click="addQuestion('essay')">+ Thêm câu tự luận / nhận xét</button>
+      <span v-if="essayQuestions.length" class="muted">{{ essayQuestions.length }} câu · {{ manualPoints }} điểm giáo viên chấm</span>
+    </div>
+    <p class="hint">Học viên viết tự luận hoặc nhận xét. Không cần đáp án mẫu; giáo viên đọc bài và cho điểm.</p>
+    <div v-for="q in essayQuestions" :key="q.id" class="block">
+      <div class="row">
+        <textarea v-model="q.label" class="grow" rows="3" aria-label="Nội dung câu tự luận / nhận xét"
+                  placeholder="VD: Nhận xét kết quả phân tích và giải thích ý nghĩa" />
+        <input v-model.number="q.points" class="num" type="number" step="0.25" title="Điểm giáo viên chấm" />
+        <button class="btn-sm danger" type="button" title="Xoá câu hỏi" @click="removeQuestion(q)">✕</button>
+      </div>
     </div>
 
-    <h4>Phần 2 – Tiêu chí trên bảng kết quả HeyStat</h4>
+    <h4>Tiêu chí chấm tự động trên bảng kết quả HeyStat</h4>
     <p v-if="schemaError" class="error">{{ schemaError }}</p>
     <div v-for="(c, i) in checks" :key="i" class="block">
       <div class="row">
@@ -102,13 +122,18 @@
       <button class="btn-sm" @click="addCheck">+ Thêm tiêu chí</button>
     </div>
 
+    <p class="hint">
+      Chấm tự động: <strong>{{ autoTotal }}</strong> điểm · Giáo viên chấm: <strong>{{ manualPoints }}</strong> điểm.
+      Tổng điểm tiêu chí: <strong>{{ autoTotal + manualPoints }}</strong>.
+      <span v-if="essayQuestions.length">Phần tự luận cần giáo viên cho điểm, không phải điểm tự động.</span>
+    </p>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="saved" class="saved">✓ Đã lưu tiêu chí chấm.</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/api/client'
 
 const props = defineProps<{
@@ -128,6 +153,12 @@ const error = ref('')
 const regrading = ref(false)
 const regradeResult = ref('')
 const regradeError = ref('')
+const objectiveQuestions = computed(() => questions.filter((q) => q.type !== 'essay'))
+const essayQuestions = computed(() => questions.filter((q) => q.type === 'essay'))
+const sumPoints = (entries: any[]) => entries.reduce((sum, entry) => sum + (Number(entry.points) || 0), 0)
+const objectivePoints = computed(() => sumPoints(objectiveQuestions.value))
+const manualPoints = computed(() => sumPoints(essayQuestions.value))
+const autoTotal = computed(() => sumPoints(checks) + objectivePoints.value)
 
 function needsValue(op: string) {
   return !['ran', 'present'].includes(op)
@@ -191,18 +222,32 @@ function load() {
 watch(() => [props.answerKey, props.gradingConfig], load, { immediate: true })
 onMounted(loadSchema)
 
-function addQuestion() {
-  questions.push({ id: `q${questions.length + 1}`, label: '', type: 'number', answer: null, tolerance: 0.001, points: 1, explain: '', comment: false, comment_hint: '' })
+function addQuestion(type: 'number' | 'essay') {
+  const question = { id: `q_${crypto.randomUUID()}`, label: '', type, points: 1 }
+  questions.push(type === 'essay' ? question : {
+    ...question, answer: null, tolerance: 0.001, explain: '', comment: false, comment_hint: '',
+  })
+}
+
+function removeQuestion(question: any) {
+  const index = questions.indexOf(question)
+  if (index !== -1) questions.splice(index, 1)
 }
 
 function addCheck() {
-  checks.push({ id: `c${checks.length + 1}`, label: '', op: 'present', points: 1, explain: '' })
+  checks.push({ id: `c_${crypto.randomUUID()}`, label: '', op: 'present', points: 1, explain: '' })
 }
 
-/** The grader reads a list of accepted spellings for text answers. */
-function normaliseAnswer(q: any) {
-  if (q.type !== 'text' || typeof q.answer !== 'string' || !q.answer.includes(';')) return q.answer
-  return q.answer.split(';').map((s: string) => s.trim()).filter(Boolean)
+/** Essays have no expected answer; text answers retain their accepted spellings. */
+function serialiseQuestion(q: any) {
+  if (q.type === 'essay') {
+    const { answer, tolerance, explain, comment, comment_hint, ...question } = q
+    return question
+  }
+  const answer = q.type === 'text' && typeof q.answer === 'string' && q.answer.includes(';')
+    ? q.answer.split(';').map((s: string) => s.trim()).filter(Boolean)
+    : q.answer
+  return { ...q, answer }
 }
 
 async function save() {
@@ -211,7 +256,7 @@ async function save() {
   error.value = ''
   try {
     await api.patch(`/classes/${props.classId}/assignments/${props.assignmentId}`, {
-      answer_key: questions.length ? { questions: questions.map((q) => ({ ...q, answer: normaliseAnswer(q) })) } : null,
+      answer_key: questions.length ? { questions: questions.map(serialiseQuestion) } : null,
       grading_config: checks.length ? { checks } : null,
     })
     saved.value = true
@@ -247,7 +292,8 @@ h4 { margin-top: 1.1rem; font-size: 0.9rem; }
 .hint { color: var(--color-text-muted); font-size: 0.8rem; margin: 0.35rem 0 0; }
 .row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
 .block { border-bottom: 1px dashed var(--amber-200); padding-bottom: 0.5rem; margin-bottom: 0.6rem; }
-input, select { padding: 0.32rem 0.5rem; border: 1px solid var(--amber-300); border-radius: 5px; font-size: 0.82rem; }
+input, select, textarea { padding: 0.32rem 0.5rem; border: 1px solid var(--amber-300); border-radius: 5px; font-size: 0.82rem; }
+textarea { resize: vertical; font-family: inherit; }
 input { width: 9rem; }
 .grow { flex: 1; min-width: 12rem; }
 .muted { color: var(--color-text-muted); font-size: 0.8rem; }
