@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
+from auth import redis_client
 from routers import assignments, class_files, sessions
 
 CID, AID, FID, UID = (uuid.uuid4() for _ in range(4))
@@ -110,6 +112,48 @@ def test_locking_a_file_used_by_an_open_assignment_is_refused(wiring):
             CID, FID, class_files.FileAccessUpdate(student_access=False), USER, db))
     assert err.value.status_code == 409
     assert "bài đang mở" in err.value.detail
+
+
+class _Redis:
+    def __init__(self):
+        self.writes = []
+
+    async def setex(self, key, ttl, value):
+        self.writes.append((key, ttl, value))
+
+
+def test_a_browser_navigation_is_redirected_into_heystat(wiring):
+    async def teacher_access(*_a, **_k):
+        return "teacher"
+
+    async def session_user(_token):
+        return str(UID)
+
+    async def redis():
+        return _Redis()
+
+    wiring.setattr(class_files, "_check_class_access", teacher_access)
+    wiring.setattr(redis_client, "validate_refresh_token", session_user)
+    wiring.setattr(redis_client, "get_redis", redis)
+    request = Request({"type": "http", "path": "/", "headers": [
+        (b"cookie", b"hs_session=token"),
+        (b"host", b"heystat.pedu.vn"),
+        (b"x-forwarded-proto", b"https"),
+    ]})
+    db = _Db(**{"users": USER, "class_files": _file(), "assignments": []})
+    response = asyncio.run(class_files.open_file_from_browser(CID, FID, request, db))
+    assert response.status_code == 302
+    assert response.headers["location"].startswith(
+        "/#open?url=https%3A%2F%2Fheystat.pedu.vn%2Fapi%2Fv1%2Ffiles%2Fot%2F")
+    assert "title=de.sav" in response.headers["location"]
+
+
+def test_a_browser_navigation_without_a_session_cookie_is_refused(wiring):
+    request = Request({"type": "http", "headers": []})
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(class_files.open_file_from_browser(
+            CID, FID, request, _Db(**{"users": USER, "class_files": _file()})))
+    assert err.value.status_code == 401
 
 
 def test_students_are_not_shown_private_draft_uploads(wiring):

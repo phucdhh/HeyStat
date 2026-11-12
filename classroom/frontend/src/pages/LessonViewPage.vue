@@ -89,7 +89,7 @@ const label = (r: any) => r.title || 'bộ dữ liệu của bài học'
 async function openDataset(r: any) {
   opening.value = { ...opening.value, [r.file_id]: true }
   try {
-    await openClassFileInJamovi(classId, r.file_id, label(r))
+    openClassFileInJamovi(classId, r.file_id)
   } catch (e: any) {
     alert(e?.response?.data?.detail ?? e?.message ?? 'Không mở được bộ dữ liệu trong HeyStat')
   } finally {

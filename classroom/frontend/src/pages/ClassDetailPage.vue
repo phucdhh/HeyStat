@@ -492,7 +492,7 @@ async function openInJamovi(f: any) {
   fileErrors.value[f.id] = ''
   try {
     // Do not await anything before this helper: Safari needs the tab opened in the click.
-    await openClassFileInJamovi(classId, f.id, f.file_name)
+    openClassFileInJamovi(classId, f.id)
   } catch (e: any) {
     fileErrors.value[f.id] = await fileErrorMessage(e, 'Không thể mở tệp trong HeyStat')
   }

@@ -6,8 +6,10 @@ import aiofiles
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from fastapi.responses import FileResponse
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, status
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -249,6 +251,62 @@ async def delete_file(
     if full_path.exists():
         full_path.unlink(missing_ok=True)
     await db.delete(cf)
+
+
+async def _session_user(request: Request, db: AsyncSession) -> User:
+    """Authenticate a normal browser navigation, which carries the session cookie
+    rather than the Authorization header used by the SPA."""
+    from auth.redis_client import validate_refresh_token
+
+    token = request.cookies.get("hs_session")
+    user_id = await validate_refresh_token(token) if token else None
+    if not user_id:
+        raise HTTPException(401, "Phiên đăng nhập đã hết hạn")
+    r = await db.execute(
+        select(User).where(User.id == uuid.UUID(user_id), User.is_active.is_(True))
+    )
+    user = r.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(401, "Tài khoản không còn quyền truy cập")
+    return user
+
+
+@router.get("/classes/{class_id}/files/{file_id}/open")
+async def open_file_from_browser(
+    class_id: uuid.UUID,
+    file_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Open a class file in a new tab without JavaScript waiting before navigation.
+
+    Safari refuses to navigate a script-opened tab after an awaited request, which
+    left students staring at a blank placeholder. A normal browser navigation to
+    this endpoint is allowed; it authenticates with the session cookie, issues the
+    one-time file token and redirects straight into HeyStat.
+    """
+    user = await _session_user(request, db)
+    cls = await _get_class_or_404(db, class_id)
+    access = await _check_class_access(db, cls, user)
+    r = await db.execute(
+        select(ClassFile).where(ClassFile.id == file_id, ClassFile.class_id == class_id)
+    )
+    cf = r.scalar_one_or_none()
+    if not cf:
+        raise HTTPException(404, "File không tồn tại")
+    if access != "teacher":
+        await require_file_open(db, cf)
+
+    from auth.redis_client import get_redis
+    token = secrets.token_hex(24)
+    r_client = await get_redis()
+    await r_client.setex(f"file_ot_access:{token}", 300, f"{cf.id}|{user.id}")
+    # jamovi's server-side opener needs an absolute URL, not a relative path.
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    origin = f"{scheme}://{request.headers.get('host') or request.url.netloc}"
+    file_url = quote(f"{origin}/api/v1/files/ot/{token}", safe="")
+    title = quote(cf.file_name, safe="")
+    return RedirectResponse(f"/#open?url={file_url}&title={title}", status_code=302)
 
 
 @router.post("/classes/{class_id}/files/{file_id}/open-url", status_code=201)
