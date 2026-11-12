@@ -99,6 +99,19 @@ def test_unlocking_a_file_used_by_a_closed_exam_is_refused(wiring):
     assert err.value.status_code == 409
 
 
+def test_locking_a_file_used_by_an_open_assignment_is_refused(wiring):
+    async def teacher_access(*_a, **_k):
+        return "teacher"
+
+    wiring.setattr(class_files, "_check_class_access", teacher_access)
+    db = _Db(**{"class_files": _file(), "assignments": [FID]})
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(class_files.update_file_access(
+            CID, FID, class_files.FileAccessUpdate(student_access=False), USER, db))
+    assert err.value.status_code == 409
+    assert "bài đang mở" in err.value.detail
+
+
 def test_students_are_not_shown_private_draft_uploads(wiring):
     async def student_access(*_a, **_k):
         return "student"

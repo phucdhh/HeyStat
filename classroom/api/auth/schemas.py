@@ -39,7 +39,9 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Browsers keep the token in the HttpOnly hs_session cookie, so the body is
+    # usually empty; an explicit token remains accepted for API clients.
+    refresh_token: Optional[str] = None
 
 
 class VerifyEmailRequest(BaseModel):

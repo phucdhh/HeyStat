@@ -16,7 +16,7 @@ from database import get_db
 from models import Class, ClassFile, Enrollment, User, UserRole, Role
 from auth.deps import get_current_user
 from services.file_validator import validate_file_extension, validate_mime_type
-from services.assignment_access import closed_file_ids, require_file_open
+from services.assignment_access import closed_file_ids, open_file_ids, require_file_open
 from config import get_settings
 
 settings = get_settings()
@@ -156,6 +156,8 @@ async def update_file_access(
     closed = await closed_file_ids(db, class_id)
     if body.student_access and cf.id in closed:
         raise HTTPException(409, "Tệp thuộc bài đang khoá. Hãy mở bài trước khi mở tệp.")
+    if not body.student_access and cf.id in await open_file_ids(db, class_id):
+        raise HTTPException(409, "Tệp đang dùng cho bài đang mở. Hãy khoá bài nếu muốn chặn học viên.")
     cf.student_access = body.student_access
     return {"student_access": cf.student_access, "is_locked": not cf.student_access or cf.id in closed}
 

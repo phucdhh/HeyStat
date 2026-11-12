@@ -2,6 +2,7 @@
 import uuid
 import secrets
 from datetime import timedelta, datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,15 +114,23 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, response: Response, db: AsyncSession = Depends(get_db)):
-    user_id = await validate_refresh_token(body.refresh_token)
+async def refresh(
+    request: Request,
+    response: Response,
+    body: Optional[RefreshRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    token = (body.refresh_token if body else None) or request.cookies.get(_SESSION_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="Refresh token không hợp lệ hoặc đã hết hạn")
+    user_id = await validate_refresh_token(token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Refresh token không hợp lệ hoặc đã hết hạn")
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Người dùng không tồn tại")
-    await revoke_refresh_token(body.refresh_token)
+    await revoke_refresh_token(token)
     token_resp = await _build_token_response(db, user)
     _set_session_cookie(response, token_resp.refresh_token)
     return token_resp

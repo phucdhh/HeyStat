@@ -4,8 +4,8 @@ export async function openClassFileInJamovi(classId: string, fileId: string, fal
   // Safari only permits a new tab during the click, before any network await.
   const tab = window.open('about:blank', '_blank')
   if (!tab) throw new Error('Trình duyệt đã chặn tab mới. Hãy cho phép cửa sổ bật lên cho HeyStat rồi thử lại.')
-  tab.opener = null
   try {
+    tab.opener = null
     tab.document.title = 'Đang mở HeyStat…'
     tab.document.body.textContent = 'Đang mở bộ dữ liệu trong HeyStat…'
   } catch {

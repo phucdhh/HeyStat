@@ -83,7 +83,7 @@
         </div>
         <p v-if="canManageFiles" class="file-access-hint">
           Khoá tệp chỉ chặn truy cập mới, không thu hồi được tệp đã tải xuống hoặc dữ liệu đang mở.
-          Tệp vẫn bị khoá nếu bất kỳ bài tập nào dùng tệp đang khoá; hãy mở bài tập đó trước.
+          Tệp dùng cho bài đang mở không thể khoá riêng; hãy khoá bài tập nếu muốn chặn học viên.
         </p>
         <div v-if="!files.length" class="empty">Chưa có tệp.</div>
         <div v-for="f in files" :key="f.id" class="list-item">
