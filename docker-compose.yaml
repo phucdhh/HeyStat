@@ -17,6 +17,14 @@ services:
       dockerfile: docker/jamovi-Dockerfile
     ports:
       - '42337:80'
+    # Keep jamovi from starving the API/database or hanging the whole LXC.
+    # Swap is deliberately not offered to this container: swapping an R engine
+    # under load is what made the machine unresponsive. A hard limit turns a
+    # runaway session into a failed analysis instead of a host-wide hang.
+    mem_limit: '26g'
+    memswap_limit: '26g'
+    pids_limit: 4096
+    cpus: '10'
     command: ["/usr/bin/python3 -u -m jamovi.server 42337 --if=*"]
     stdin_open: true
     # Stop grace period must be an integer duration supported by the Docker API.
@@ -76,10 +84,22 @@ services:
         # Close sessions that stay connected but untouched for four hours;
         # long practical classes must not be cut short.
         JAMOVI_TIMEOUT_IDLE: '14400'
+        # Stop a runaway analysis after five minutes instead of letting it
+        # consume a core and memory indefinitely.
+        JAMOVI_ANALYSIS_DURATION_LIMIT: '300'
+
+        # Server-only tuning: lower these when memory is tight (2 engines =
+        # 1 init + 1 run). The desktop default remains 1 + 3.
+        # JAMOVI_SESSION_INIT_SLOTS: '1'
+        # JAMOVI_SESSION_RUN_SLOTS: '1'
 
     volumes: &base_volumes
       - ./Documents:/root/Documents
       - ./jamovi-modules:/root/.jamovi/modules
+      # Mount HeyStat server patches; without these the image's upstream
+      # session.py/i18n.py hide observer support and classroom strings.
+      - ./server/jamovi/server/session.py:/usr/lib/jamovi/server/jamovi/server/session.py:ro
+      - ./server/jamovi/server/i18n.py:/usr/lib/jamovi/server/jamovi/server/i18n.py:ro
       # Mount fixed public_roots.py (HeyStat reverse-proxy support)
       - ./server/jamovi/server/public_roots.py:/usr/lib/jamovi/server/jamovi/server/public_roots.py:ro
       # NOTE: ./client/dist is intentionally NOT mounted here.

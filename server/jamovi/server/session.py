@@ -106,7 +106,11 @@ class Session(dict):
         if language != '':
             i18n.set_language(language)
 
-        self._scheduler = Scheduler(1, 3, self._analyses, self._modules)
+        # jamovi's desktop default is 1 init + 3 run engines. Server deployments
+        # can lower this to reduce memory per session without changing results.
+        init_slots = int(conf.get('session_init_slots', '1'))
+        run_slots = int(conf.get('session_run_slots', '3'))
+        self._scheduler = Scheduler(init_slots, run_slots, self._analyses, self._modules)
 
         task_queue_url = conf.get('task_queue_url')
         if task_queue_url is not None:

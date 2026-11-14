@@ -6,6 +6,8 @@ services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    mem_limit: '4g'
+    pids_limit: 512
     environment:
       POSTGRES_DB: ${DB_NAME:-classroom}
       POSTGRES_USER: ${DB_USER:-heystat}
@@ -21,6 +23,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: '1g'
+    pids_limit: 256
     volumes:
       - redis_data:/data
 
@@ -29,6 +33,9 @@ services:
       context: ./api
       dockerfile: ../Dockerfile
     restart: unless-stopped
+    mem_limit: '2g'
+    pids_limit: 512
+    cpus: '1.5'
     depends_on:
       db:
         condition: service_healthy
@@ -49,6 +56,9 @@ services:
       context: ./api
       dockerfile: ../Dockerfile
     restart: unless-stopped
+    mem_limit: '1g'
+    pids_limit: 256
+    cpus: '0.5'
     depends_on:
       - redis
       - db
@@ -63,6 +73,9 @@ services:
       context: ./api
       dockerfile: ../Dockerfile
     restart: unless-stopped
+    mem_limit: '512m'
+    pids_limit: 128
+    cpus: '0.5'
     depends_on:
       - redis
       - db
