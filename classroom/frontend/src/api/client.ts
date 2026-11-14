@@ -30,9 +30,15 @@ api.interceptors.response.use(
           await auth.refresh()
           queue.forEach((fn) => fn())
           queue = []
-        } catch {
-          const auth = useAuthStore()
-          auth.logout()
+        } catch (refreshError: any) {
+          // A timeout or 5xx means the server is overloaded, not that the
+          // session ended. Logging out here caused a re-login storm while
+          // jamovi was saturating the machine.
+          const status = refreshError?.response?.status
+          if (status === 401 || status === 403) {
+            const auth = useAuthStore()
+            auth.logout()
+          }
           return Promise.reject(error)
         } finally {
           refreshing = false

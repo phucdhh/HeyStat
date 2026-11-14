@@ -1,0 +1,8 @@
+[Unit]
+Description=Restart jamovi after the teaching day and clear stale sessions
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/heystat-nightly-cleanup.sh

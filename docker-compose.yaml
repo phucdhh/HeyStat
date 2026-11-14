@@ -67,6 +67,16 @@ services:
         # Lives outside the repo: compose reads it from .env in this directory.
         JAMOVI_COLLAB_SECRET: '${JAMOVI_COLLAB_SECRET:-}'
 
+        # Reap sessions that are no longer held by a browser. jamovi's built-in
+        # default keeps an uncleanly disconnected instance alive forever, which
+        # accumulates memory across classes until the server is restarted.
+        JAMOVI_TIMEOUT_NO_CONNECTION: '120'
+        JAMOVI_TIMEOUT_NO_CONNECTION_UNCLEAN_DISCONNECT: '300'
+        JAMOVI_TIMEOUT_NO_CONNECTION_VIRGIN: '120'
+        # Close sessions that stay connected but untouched for four hours;
+        # long practical classes must not be cut short.
+        JAMOVI_TIMEOUT_IDLE: '14400'
+
     volumes: &base_volumes
       - ./Documents:/root/Documents
       - ./jamovi-modules:/root/.jamovi/modules
