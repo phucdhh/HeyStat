@@ -9,6 +9,11 @@
           <h1>{{ cls.title }}</h1>
           <p class="sub" v-if="cls.description">{{ cls.description }}</p>
           <p class="sub" v-if="cls.teacher_name && cls.teacher_id !== auth.user?.id">👤 Giáo viên: {{ cls.teacher_name }}</p>
+          <p v-if="auth.isTeacher" class="live-line"
+             :title="`Học viên được tính khi đang mở trang của lớp này. Số liệu lấy trong ${liveStats.window} giây gần nhất, làm mới mỗi 15 giây.`">
+            <span class="chip live-on">🟢 {{ liveStats.online }}/{{ liveStats.enrolled }} đang online</span>
+            <span class="chip live-edit">✍️ {{ liveStats.editing }} đang làm bài trong HeyStat</span>
+          </p>
         </div>
       </div>
 
@@ -157,6 +162,7 @@
               <tr>
                 <th aria-label="Chi tiết"></th>
                 <th>Học viên</th>
+                <th>Trạng thái</th>
                 <th>Tiến độ nộp bài</th>
                 <th>Chấm điểm</th>
                 <th>Điểm TB</th>
@@ -178,6 +184,11 @@
                       <span class="muted">{{ m.email }}</span>
                       <span v-if="m.status !== 'active'" class="chip drop">đã rời lớp</span>
                     </div>
+                  </td>
+                  <td>
+                    <span v-if="liveOf(m.id).editing" class="chip live-edit">đang làm bài</span>
+                    <span v-else-if="liveOf(m.id).online" class="chip live-on">đang online</span>
+                    <span v-else class="muted">không hoạt động</span>
                   </td>
                   <td>
                     <div class="prog-line">
@@ -202,7 +213,7 @@
                 </tr>
                 <tr v-if="expanded[m.id]" class="detail-row">
                   <td></td>
-                  <td colspan="5">
+                  <td colspan="6">
                     <div v-if="!m.progress.length" class="empty">Lớp chưa có bài tập.</div>
                     <div v-for="p in m.progress" :key="p.assignment_id" class="progress-row">
                       <span class="dot" :class="p.state"></span>
@@ -244,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -323,6 +334,32 @@ const roster = computed(() => {
 })
 
 const exporting = ref(false)
+
+// ── Who is in class right now ───────────────────────
+interface LiveState { online: boolean; editing: boolean }
+const live = ref<Record<string, LiveState>>({})
+const liveStats = ref({ enrolled: 0, online: 0, editing: 0, window: 90 })
+let liveTimer: number | undefined
+
+function liveOf(id: string): LiveState {
+  return live.value[id] ?? { online: false, editing: false }
+}
+
+async function loadLive() {
+  if (document.visibilityState !== 'visible') return
+  try {
+    const { data } = await api.get(`/classes/${classId}/presence`)
+    live.value = Object.fromEntries(
+      data.students.map((s: any) => [s.user_id, { online: s.online, editing: s.editing }]),
+    )
+    liveStats.value = {
+      enrolled: data.enrolled_total, online: data.online_total,
+      editing: data.editing_total, window: data.window_seconds,
+    }
+  } catch {
+    // The count is a live readout; one failed poll keeps showing the last numbers.
+  }
+}
 
 /** One CSV per class, one column per assignment — the same rows the table shows. */
 async function exportRoster() {
@@ -577,8 +614,14 @@ onMounted(async () => {
       ])
       members.value = memberRes.data.sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'vi'))
       enrollmentCode.value = codeRes.data.enrollment_code ?? ''
+      await loadLive()
+      liveTimer = window.setInterval(loadLive, 15000)
     }
   } finally { loading.value = false }
+})
+
+onUnmounted(() => {
+  if (liveTimer) clearInterval(liveTimer)
 })
 </script>
 
@@ -643,6 +686,9 @@ onMounted(async () => {
 .chip.wait { background: var(--amber-100); color: var(--amber-800); border: 1px solid var(--amber-300); }
 .chip.drop { background: #F3F4F6; color: #6B7280; }
 .chip.auto { background: #E7F6EC; color: #166534; border: 1px solid #BBE5C7; }
+.chip.live-on { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+.chip.live-edit { background: #DBEAFE; color: #1D4ED8; border: 1px solid #93C5FD; }
+.live-line { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0 0; }
 .kind-tag { font-size: 0.72rem; font-weight: 700; color: var(--amber-700); background: var(--amber-100); border: 1px solid var(--amber-200); padding: 0.1rem 0.45rem; border-radius: 8px; white-space: nowrap; }
 .detail-row td { background: var(--amber-50); padding-top: 0.4rem; padding-bottom: 0.5rem; }
 .progress-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.28rem 0; font-size: 0.82rem; }

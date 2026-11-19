@@ -24,6 +24,7 @@ from routers.progress import (
     notif_router,
     admin_router,
 )
+from routers.presence import router as presence_router
 from routers.lessons import router as lessons_router
 from routers.quizzes import router as quizzes_router
 from routers.my_files import router as my_files_router, shared_router
@@ -68,6 +69,7 @@ app.include_router(assignments_router,  prefix="/api/v1")
 app.include_router(sessions_router,     prefix="/api/v1")
 app.include_router(submissions_router,  prefix="/api/v1")
 app.include_router(progress_router,     prefix="/api/v1")
+app.include_router(presence_router,     prefix="/api/v1")
 app.include_router(notif_router,        prefix="/api/v1")
 app.include_router(admin_router,        prefix="/api/v1")
 app.include_router(lessons_router,      prefix="/api/v1")

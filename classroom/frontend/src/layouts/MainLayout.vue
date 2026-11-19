@@ -101,9 +101,11 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notifications'
+import { usePresenceStore } from '@/stores/presence'
 
 const auth = useAuthStore()
 const notifStore = useNotifStore()
+const presence = usePresenceStore()
 const router = useRouter()
 const route = useRoute()
 const showNotif = ref(false)
@@ -125,11 +127,21 @@ function updateScreen(event: MediaQueryListEvent) {
 watch(() => route.fullPath, () => {
   sidebarOpen.value = !isSubmitWork.value && !smallScreen.value
 })
+// Being inside a class page is what "đang vào học" means here, so the seat is
+// claimed on any route carrying a class id and released when the student walks out.
+watch(() => [route.params.classId, auth.user?.id], () => {
+  const id = typeof route.params.classId === 'string' ? route.params.classId : ''
+  if (id && auth.user) presence.enter(id)
+  else presence.exit()
+}, { immediate: true })
 onMounted(() => {
   notifStore.fetch()
   screenQuery.addEventListener('change', updateScreen)
 })
-onUnmounted(() => screenQuery.removeEventListener('change', updateScreen))
+onUnmounted(() => {
+  screenQuery.removeEventListener('change', updateScreen)
+  presence.shutdown()
+})
 
 const initials = computed(() => {
   const name = auth.user?.full_name || auth.user?.email || ''

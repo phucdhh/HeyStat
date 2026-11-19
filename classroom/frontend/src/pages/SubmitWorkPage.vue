@@ -121,13 +121,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client'
 import OutputTable from '@/components/OutputTable.vue'
 import { sessionErrorMessage, useJamoviSession } from '@/composables/useJamoviSession'
+import { usePresenceStore } from '@/stores/presence'
 
 const route = useRoute()
+const presence = usePresenceStore()
 const classId = route.params.classId as string
 const assignmentId = route.params.assignmentId as string
 
@@ -195,6 +197,9 @@ const {
 } = useJamoviSession()
 
 const collabRole = computed(() => session.value?.collab_role)
+// A loaded session is what the teacher's "đang làm bài" count means; answers typed
+// without an editor still count as being in class, but not as working in HeyStat.
+watch(session, (value) => { void presence.setEditing(!!value) })
 const canWrite = computed(() => !!assignment.value && !assignmentClosed.value && !submitSuccess.value && collabRole.value === 'writer')
 const busy = computed(() => loadingAssignment.value || starting.value || capturing.value || submitting.value || syncing.value || autoSaving.value || savingSelection.value)
 const canEditAnswers = computed(() => canWrite.value && !submitting.value)
@@ -320,6 +325,7 @@ onUnmounted(() => {
   active = false
   clearInterval(autoSaveTimer)
   screenQuery.removeEventListener('change', updateScreen)
+  void presence.setEditing(false)
   if (!submitSuccess.value) void stop()
 })
 </script>
