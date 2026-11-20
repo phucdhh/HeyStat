@@ -62,7 +62,9 @@ rebuild_api() {
   echo "--- Restart services ---"
   docker-compose stop api worker scheduler
   docker-compose rm -f api worker scheduler
-  docker-compose up -d api worker scheduler
+  # --no-deps is not optional: compose v1 otherwise recreates depends_on (db, redis)
+  # too, dies with KeyError 'ContainerConfig', and leaves Postgres/Redis stopped.
+  docker-compose up -d --no-deps api worker scheduler
 
   echo "--- Chờ API khởi động ---"
   sleep 5
@@ -70,7 +72,8 @@ rebuild_api() {
   STATUS=$(docker-compose ps 2>/dev/null || echo "(không lấy được trạng thái)")
   echo "$STATUS"
 
-  HTTP=$(curl -s -o /dev/null -w '%{http_code}' https://heystat.pedu.vn/classroom/api/v1/health 2>/dev/null || echo "???")
+  # /classroom/api/... is a static nginx location and answers 405 — ask the API itself.
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/health 2>/dev/null || echo "???")
   echo "Health check API: HTTP $HTTP"
   echo "✓ API đã rebuild và restart thành công"
 }

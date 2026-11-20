@@ -108,11 +108,17 @@ if $VERIFY; then
     [ -e "$f" ] || continue
     if gzip -t "$f" 2>/dev/null; then echo "   OK gzip: $(basename "$f")"; else echo "   !! file hu hong: $f"; fi
   done
-  if [ -e "$BACKUP_DIR/classroom_$STAMP.sql.gz" ]; then
-    if gunzip -c "$BACKUP_DIR/classroom_$STAMP.sql.gz" 2>/dev/null | head -3 | grep -q 'PostgreSQL database dump'; then
-      echo "   OK dump: $(basename "$BACKUP_DIR/classroom_$STAMP.sql.gz") (so bang: $(gunzip -c "$BACKUP_DIR/classroom_$STAMP.sql.gz" | grep -c '^CREATE TABLE'))"
+  DUMP_GZ="$BACKUP_DIR/classroom_$STAMP.sql.gz"
+  if [ -e "$DUMP_GZ" ]; then
+    # awk phải đọc hết stream: head -3 / grep -q đóng pipe sớm sẽ trả SIGPIPE cho gunzip,
+    # và với set -o pipefail điều đó biến một dump hợp lệ thành "!! dump khong phai pg_dump".
+    RES=$(gunzip -c "$DUMP_GZ" | awk '/PostgreSQL database dump/{h=1} /^CREATE TABLE/{t++} END{print h+0" "t+0}')
+    HEADER_OK=${RES%% *}
+    TABLES=${RES##* }
+    if [ "$HEADER_OK" -gt 0 ] && [ "$TABLES" -gt 0 ]; then
+      echo "   OK dump: $(basename "$DUMP_GZ") (so bang: $TABLES)"
     else
-      echo "   !! dump khong phai pg_dump cua PostgreSQL"
+      echo "   !! dump khong phai pg_dump cua PostgreSQL (header=$HEADER_OK so bang=$TABLES)"
     fi
   fi
 fi
