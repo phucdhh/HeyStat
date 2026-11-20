@@ -19,6 +19,7 @@ from models import Class, ClassFile, Enrollment, User, UserRole, Role
 from auth.deps import get_current_user
 from services.file_validator import validate_file_extension, validate_mime_type
 from services.assignment_access import closed_file_ids, open_file_ids, require_file_open
+from services.class_access import can_grade, class_role
 from config import get_settings
 
 settings = get_settings()
@@ -42,19 +43,8 @@ async def _get_class_or_404(db, class_id):
 
 
 async def _check_class_access(db, cls, user):
-    roles = await _get_user_roles_set(db, user.id)
-    if "admin" in roles or cls.teacher_id == user.id:
-        return "teacher"
-    r = await db.execute(
-        select(Enrollment).where(
-            Enrollment.class_id == cls.id,
-            Enrollment.user_id == user.id,
-            Enrollment.status == "active",
-        )
-    )
-    if r.scalar_one_or_none():
-        return "student"
-    raise HTTPException(403, "Không có quyền truy cập lớp học này")
+    """'teacher' | 'assistant' | 'student'; raises 403 when the user is none of them."""
+    return await class_role(db, cls, user)
 
 
 class FileResponse_(BaseModel):
@@ -79,7 +69,7 @@ async def list_files(
     access = await _check_class_access(db, cls, current_user)
     r = await db.execute(select(ClassFile).where(ClassFile.class_id == class_id))
     files = r.scalars().all()
-    if access != "teacher":
+    if not can_grade(access):
         # Draft exam uploads are not even named to students until the teacher opens one.
         files = [f for f in files if f.student_access]
     closed = await closed_file_ids(db, class_id)
@@ -179,7 +169,7 @@ async def download_file(
     cf = r.scalar_one_or_none()
     if not cf:
         raise HTTPException(404, "File không tồn tại")
-    if access != "teacher":
+    if not can_grade(access):
         await require_file_open(db, cf)
     full_path = Path(settings.upload_dir) / cf.file_path
     if not full_path.exists():
@@ -294,7 +284,7 @@ async def open_file_from_browser(
     cf = r.scalar_one_or_none()
     if not cf:
         raise HTTPException(404, "File không tồn tại")
-    if access != "teacher":
+    if not can_grade(access):
         await require_file_open(db, cf)
 
     from auth.redis_client import get_redis
@@ -306,7 +296,7 @@ async def open_file_from_browser(
     origin = f"{scheme}://{request.headers.get('host') or request.url.netloc}"
     file_url = quote(f"{origin}/api/v1/files/ot/{token}", safe="")
     title = quote(cf.file_name, safe="")
-    return RedirectResponse(f"/#open?url={file_url}&title={title}", status_code=302)
+    return RedirectResponse(f"/app#open?url={file_url}&title={title}", status_code=302)
 
 
 @router.post("/classes/{class_id}/files/{file_id}/open-url", status_code=201)
@@ -326,7 +316,7 @@ async def get_file_open_url(
     if not cf:
         raise HTTPException(404, "File không tồn tại")
 
-    if access != "teacher":
+    if not can_grade(access):
         await require_file_open(db, cf)
     from auth.redis_client import get_redis
     token = secrets.token_hex(24)
@@ -360,7 +350,7 @@ async def one_time_download(
     if user is None:
         raise HTTPException(403, "Tài khoản không còn quyền truy cập")
     cls = await _get_class_or_404(db, cf.class_id)
-    if await _check_class_access(db, cls, user) != "teacher":
+    if not can_grade(await _check_class_access(db, cls, user)):
         await require_file_open(db, cf)
     full_path = Path(settings.upload_dir) / cf.file_path
     if not full_path.is_file():

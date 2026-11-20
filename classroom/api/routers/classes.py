@@ -19,6 +19,7 @@ import bcrypt as _bcrypt_lib
 from database import get_db
 from models import Assignment, Class, ClassFile, Enrollment, Lesson, Quiz, Submission, User, UserRole, Role
 from auth.deps import get_current_user, require_teacher, require_admin
+from services.class_access import ASSISTANT, STUDENT, TEACHER, can_grade, class_role
 from config import get_settings
 
 settings = get_settings()
@@ -65,6 +66,7 @@ class ClassResponse(BaseModel):
     ends_at: datetime
     status: str
     created_at: datetime
+    my_role: str = STUDENT
 
     model_config = {"from_attributes": True}
 
@@ -104,6 +106,8 @@ class StudentResponse(BaseModel):
     full_name: str
     enrolled_at: datetime
     status: str
+    # Course-level role: 'student' or the teacher's appointed 'assistant'
+    role: str = "student"
     assignments_total: int
     submitted: int
     graded: int
@@ -115,6 +119,17 @@ class StudentResponse(BaseModel):
     progress: list[StudentProgress]
 
     model_config = {"from_attributes": True}
+
+
+class AssistantCreate(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+
+class AssistantResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    enrolled_at: Optional[datetime] = None
 
 
 # ─── helpers ────────────────────────────────────────────────────
@@ -286,6 +301,9 @@ async def get_class(
         description=cls.description, max_students=cls.max_students,
         starts_at=cls.starts_at, ends_at=cls.ends_at, status=cls.status,
         created_at=cls.created_at,
+        # What the caller may do in this class: the app hides authoring buttons
+        # from an assistant instead of waiting for a 403.
+        my_role=await class_role(db, cls, current_user),
     )
 
 
@@ -308,6 +326,7 @@ async def update_class(
         description=cls.description, max_students=cls.max_students,
         starts_at=cls.starts_at, ends_at=cls.ends_at, status=cls.status,
         created_at=cls.created_at,
+        my_role=TEACHER,
     )
 
 
@@ -496,17 +515,16 @@ async def _roster(
     """The members tab and its CSV export must say the same thing, so they read
     from one place. Also returns the class assignments, for the per-assignment columns."""
     cls = await _get_class_or_404(db, class_id)
-    roles = await _get_user_roles_set(db, current_user.id)
-    if "admin" not in roles and cls.teacher_id != current_user.id:
+    if not can_grade(await class_role(db, cls, current_user)):
         raise HTTPException(status_code=403, detail="Không có quyền xem danh sách sinh viên")
 
     result = await db.execute(
-        select(User, Enrollment.enrolled_at, Enrollment.status)
+        select(User, Enrollment.enrolled_at, Enrollment.status, Enrollment.role)
         .join(Enrollment, Enrollment.user_id == User.id)
         .where(Enrollment.class_id == class_id)
     )
     rows = result.all()
-    student_ids = {u.id for u, _, _ in rows}
+    student_ids = {u.id for u, _, _, _ in rows}
 
     assignments = (await db.execute(
         select(Assignment).where(Assignment.class_id == class_id).order_by(Assignment.deadline)
@@ -522,7 +540,7 @@ async def _roster(
     students = [
         StudentResponse(
             id=str(u.id), email=u.email, full_name=u.full_name,
-            enrolled_at=ea, status=es,
+            enrolled_at=ea, status=es, role=er,
             **_student_progress(
                 assignments,
                 [s for s in submissions if s.student_id == u.id],
@@ -530,7 +548,7 @@ async def _roster(
                 now,
             ),
         )
-        for u, ea, es in rows
+        for u, ea, es, er in rows
     ]
     return students, assignments
 
@@ -617,6 +635,91 @@ async def remove_student(
     if not enr:
         raise HTTPException(status_code=404, detail="Sinh viên không tham gia lớp này")
     enr.status = "dropped"
+
+
+@router.get("/{class_id}/assistants", response_model=list[AssistantResponse])
+async def list_assistants(
+    class_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    cls = await _get_class_or_404(db, class_id)
+    await _require_teacher_owns(db, cls, current_user)
+    result = await db.execute(
+        select(User, Enrollment.enrolled_at)
+        .join(Enrollment, Enrollment.user_id == User.id)
+        .where(Enrollment.class_id == class_id, Enrollment.status == "active",
+               Enrollment.role == ASSISTANT)
+    )
+    return [
+        AssistantResponse(id=str(u.id), email=u.email, full_name=u.full_name, enrolled_at=ea)
+        for u, ea in result.all()
+    ]
+
+
+@router.post("/{class_id}/assistants", status_code=201, response_model=AssistantResponse)
+async def add_assistant(
+    class_id: uuid.UUID,
+    body: AssistantCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Appoint a fellow account as assistant of this class.
+
+    An assistant grades and reads the roster but never owns the class, so the
+    appointment is allowed only by the owner (or an admin).
+    """
+    cls = await _get_class_or_404(db, class_id)
+    await _require_teacher_owns(db, cls, current_user)
+    email = body.email.strip()
+    user = (await db.execute(
+        select(User).where(func.lower(User.email) == email.lower())
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản này")
+    if user.id == cls.teacher_id:
+        raise HTTPException(status_code=400, detail="Giảng viên của lớp không cần làm trợ giảng")
+
+    enr = (await db.execute(
+        select(Enrollment).where(Enrollment.class_id == class_id, Enrollment.user_id == user.id)
+    )).scalar_one_or_none()
+    if enr:
+        enr.status = "active"
+        enr.role = ASSISTANT
+        enrolled_at = enr.enrolled_at
+    else:
+        new = Enrollment(
+            class_id=class_id, user_id=user.id, role=ASSISTANT,
+            # enrolled_at is a server default and the response below reads it,
+            # which an async session cannot lazy-load after flush.
+            enrolled_at=datetime.now(tz=timezone.utc),
+        )
+        db.add(new)
+        await db.flush()
+        enrolled_at = new.enrolled_at
+    return AssistantResponse(id=str(user.id), email=user.email, full_name=user.full_name,
+                             enrolled_at=enrolled_at)
+
+
+@router.delete("/{class_id}/assistants/{user_id}", status_code=204)
+async def remove_assistant(
+    class_id: uuid.UUID,
+    user_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Downgrade back to student; use the roster to drop the person entirely."""
+    cls = await _get_class_or_404(db, class_id)
+    await _require_teacher_owns(db, cls, current_user)
+    enr = (await db.execute(
+        select(Enrollment).where(
+            Enrollment.class_id == class_id, Enrollment.user_id == user_id,
+            Enrollment.role == ASSISTANT,
+        )
+    )).scalar_one_or_none()
+    if not enr:
+        raise HTTPException(status_code=404, detail="Người này không làm trợ giảng trong lớp")
+    enr.role = "student"
 
 
 @router.get("/{class_id}/enrollment-code", response_model=dict)

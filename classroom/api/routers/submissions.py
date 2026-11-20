@@ -21,6 +21,7 @@ from services.auto_grader import auto_grade
 from services.file_validator import validate_file_extension, validate_mime_type
 from services.omv_reader import parse_omv
 from services.assignment_access import require_assignment_open
+from services.class_access import can_grade, class_role
 
 settings = get_settings()
 router = APIRouter(tags=["submissions"])
@@ -50,6 +51,14 @@ async def _is_enrolled(db, class_id, user_id):
         )
     )
     return r.scalar_one_or_none() is not None
+
+
+async def _is_grader(db, cls, user) -> bool:
+    """The owner, an admin, or an assistant appointed in that class."""
+    try:
+        return can_grade(await class_role(db, cls, user))
+    except HTTPException:
+        return False
 
 
 class GradeRequest(BaseModel):
@@ -459,8 +468,7 @@ async def all_submissions(
     a = await _get_assignment_or_404(db, assignment_id)
     cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
     cls = cls_r.scalar_one_or_none()
-    roles = await _get_user_roles(db, current_user.id)
-    if "admin" not in roles and cls.teacher_id != current_user.id:
+    if not await _is_grader(db, cls, current_user):
         raise HTTPException(403, "Chỉ giáo viên mới xem được tất cả bài nộp")
     # Join with User to get student name
     from sqlalchemy import outerjoin
@@ -493,8 +501,7 @@ async def regrade_submissions(
     a = await _get_assignment_or_404(db, assignment_id)
     cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
     cls = cls_r.scalar_one_or_none()
-    roles = await _get_user_roles(db, current_user.id)
-    if "admin" not in roles and (not cls or cls.teacher_id != current_user.id):
+    if cls is None or not await _is_grader(db, cls, current_user):
         raise HTTPException(403, "Chỉ giáo viên mới chấm lại bài")
     return await regrade_assignment(db, a)
 
@@ -514,12 +521,11 @@ async def get_submission(
     sub = r.scalar_one_or_none()
     if not sub:
         raise HTTPException(404, "Bài nộp không tồn tại")
-    roles = await _get_user_roles(db, current_user.id)
     a = await _get_assignment_or_404(db, assignment_id)
     cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
     cls = cls_r.scalar_one()
-    is_teacher = "admin" in roles or cls.teacher_id == current_user.id
-    if not is_teacher and sub.student_id != current_user.id:
+    is_grader = await _is_grader(db, cls, current_user)
+    if not is_grader and sub.student_id != current_user.id:
         raise HTTPException(403, "Không có quyền xem bài nộp này")
     payload = SubmissionResponse(
         id=str(sub.id), assignment_id=str(sub.assignment_id),
@@ -529,7 +535,7 @@ async def get_submission(
         answers=sub.answers, auto_grade=sub.auto_grade,
         outputs=(sub.session_snapshot or {}).get("tables") or None,
     )
-    return payload if is_teacher else _without_marks(payload)
+    return payload if is_grader else _without_marks(payload)
 
 
 @router.get("/submissions/{submission_id}/download")
@@ -546,9 +552,7 @@ async def download_submission(
     a = await _get_assignment_or_404(db, sub.assignment_id)
     cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
     cls = cls_r.scalar_one()
-    roles = await _get_user_roles(db, current_user.id)
-    is_teacher = "admin" in roles or cls.teacher_id == current_user.id
-    if not is_teacher and sub.student_id != current_user.id:
+    if not await _is_grader(db, cls, current_user) and sub.student_id != current_user.id:
         raise HTTPException(403, "Không có quyền tải bài nộp này")
     if not sub.file_path:
         raise HTTPException(404, "Bài nộp không kèm file")
@@ -573,8 +577,7 @@ async def grade_submission(
     a = await _get_assignment_or_404(db, assignment_id)
     cls_r = await db.execute(select(Class).where(Class.id == a.class_id))
     cls = cls_r.scalar_one()
-    roles = await _get_user_roles(db, current_user.id)
-    if "admin" not in roles and cls.teacher_id != current_user.id:
+    if not await _is_grader(db, cls, current_user):
         raise HTTPException(403, "Không có quyền chấm điểm")
     r = await db.execute(
         select(Submission).where(Submission.id == submission_id, Submission.assignment_id == assignment_id)

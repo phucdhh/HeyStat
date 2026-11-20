@@ -139,7 +139,7 @@ async def get_session_token(
         session_query += f"&collab_token={collab_param}"
 
     return SessionTokenResponse(
-        embed_url=f"/?{session_query}",
+        embed_url=f"/app?{session_query}",
         session_token=session_token,
         collab_role=collab_role,
         session_path=session_path,
@@ -217,7 +217,7 @@ async def observe_session(
     if collab_param:
         session_query += f"&collab_token={collab_param}"
     return SessionTokenResponse(
-        embed_url=f"/?{session_query}",
+        embed_url=f"/app?{session_query}",
         session_token=obs_token,
         collab_role="observer",
         session_path=session_path,

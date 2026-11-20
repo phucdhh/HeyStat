@@ -9,7 +9,7 @@
           <h1>{{ cls.title }}</h1>
           <p class="sub" v-if="cls.description">{{ cls.description }}</p>
           <p class="sub" v-if="cls.teacher_name && cls.teacher_id !== auth.user?.id">👤 Giáo viên: {{ cls.teacher_name }}</p>
-          <p v-if="auth.isTeacher" class="live-line"
+          <p v-if="isOwner" class="live-line"
              :title="`Học viên được tính khi đang mở trang của lớp này. Số liệu lấy trong ${liveStats.window} giây gần nhất, làm mới mỗi 15 giây.`">
             <span class="chip live-on">🟢 {{ liveStats.online }}/{{ liveStats.enrolled }} đang online</span>
             <span class="chip live-edit">✍️ {{ liveStats.editing }} đang làm bài trong HeyStat</span>
@@ -27,7 +27,7 @@
 
       <!-- ── Assignments tab ───────────────────────────── -->
       <div v-if="activeTab === 'assignments'">
-        <div class="tab-toolbar" v-if="auth.isTeacher">
+        <div class="tab-toolbar" v-if="isOwner">
           <button class="btn-primary" @click="showCreateAssignment = true">+ Tạo bài tập</button>
         </div>
         <div v-if="!assignments.length" class="empty">Chưa có bài tập.</div>
@@ -39,23 +39,23 @@
           <span v-if="a.answer_key?.questions?.length || a.grading_config?.checks?.length" class="chip auto">chấm tự động</span>
           <span v-if="a.file_id" class="meta">📊 có bộ dữ liệu</span>
           <span class="score-tag">{{ a.max_score }} điểm</span>
-          <button v-if="auth.isTeacher" class="btn-icon" @click="openEditAssignment(a)" title="Sửa">✏️</button>
-          <button v-if="auth.isTeacher" class="btn-icon" @click="deleteAssignment(a)" title="Xoá">🗑️</button>
+          <button v-if="isOwner" class="btn-icon" @click="openEditAssignment(a)" title="Sửa">✏️</button>
+          <button v-if="isOwner" class="btn-icon" @click="deleteAssignment(a)" title="Xoá">🗑️</button>
         </div>
       </div>
 
       <!-- ── Lessons tab ───────────────────────────────── -->
       <div v-if="activeTab === 'lessons'">
-        <div class="tab-toolbar" v-if="auth.isTeacher">
+        <div class="tab-toolbar" v-if="isOwner">
           <button class="btn-primary" @click="openCreateLesson">+ Tạo bài học</button>
         </div>
         <div v-if="!lessons.length" class="empty">Chưa có bài học.</div>
         <div v-for="(l, i) in lessons" :key="l.id" class="list-item">
           <span class="kind-tag">{{ typeOf(l.lesson_type).icon }} {{ typeOf(l.lesson_type).label }}</span>
           <RouterLink :to="`/classes/${classId}/lessons/${l.id}`" class="item-title">{{ l.title }}</RouterLink>
-          <span v-if="auth.isTeacher && !l.is_published" class="chip wait">nháp</span>
+          <span v-if="canGrade && !l.is_published" class="chip wait">nháp</span>
           <span v-if="l.resource_count" class="meta">📎 {{ l.resource_count }} tài nguyên</span>
-          <template v-if="auth.isTeacher">
+          <template v-if="isOwner">
             <button class="btn-icon" :disabled="i === 0" title="Lên trên" @click="moveLesson(i, -1)">↑</button>
             <button class="btn-icon" :disabled="i === lessons.length - 1" title="Xuống dưới" @click="moveLesson(i, 1)">↓</button>
             <button v-if="l.is_published" class="btn-icon pub" title="Ngừng công khai" @click="togglePublish(l)">🌐</button>
@@ -68,7 +68,7 @@
 
       <!-- ── Quizzes tab ───────────────────────────────── -->
       <div v-if="activeTab === 'quizzes'">
-        <div class="tab-toolbar" v-if="auth.isTeacher">
+        <div class="tab-toolbar" v-if="isOwner">
           <RouterLink :to="`/classes/${classId}/quizzes/new`" class="btn-primary" style="text-decoration:none">+ Tạo Quiz</RouterLink>
         </div>
         <div v-if="!quizzes.length" class="empty">Chưa có quiz.</div>
@@ -80,7 +80,7 @@
 
       <!-- ── Files tab ─────────────────────────────────── -->
       <div v-if="activeTab === 'files'">
-        <div class="tab-toolbar" v-if="auth.isTeacher">
+        <div class="tab-toolbar" v-if="isOwner">
           <button class="btn-primary" :disabled="uploadingFile" @click="fileInputRef?.click()">
             {{ uploadingFile ? 'Đang tải lên…' : '+ Tải lên tệp' }}
           </button>
@@ -92,27 +92,27 @@
         </p>
         <div v-if="!files.length" class="empty">Chưa có tệp.</div>
         <div v-for="f in files" :key="f.id" class="list-item">
-          <button type="button" class="item-title file-open" :disabled="!auth.isTeacher && f.is_locked"
-                  :title="!auth.isTeacher && f.is_locked ? 'Tệp đang khoá, chưa thể mở' : 'Mở trong HeyStat'"
+          <button type="button" class="item-title file-open" :disabled="!canGrade && f.is_locked"
+                  :title="!canGrade && f.is_locked ? 'Tệp đang khoá, chưa thể mở' : 'Mở trong HeyStat'"
                   @click="openInJamovi(f)">{{ f.file_name }}</button>
           <span class="meta">{{ f.file_size ? (f.file_size / 1024).toFixed(1) + ' KB' : '' }}</span>
           <span v-if="f.is_locked" class="chip miss">Đang khoá với học viên</span>
           <span v-else-if="canManageFiles" class="chip auto">Đang mở cho học viên</span>
           <span v-if="canManageFiles && f.is_locked && f.student_access" class="meta">Bài tập dùng tệp đang khoá</span>
-          <button class="btn-icon" :disabled="!auth.isTeacher && f.is_locked"
+          <button class="btn-icon" :disabled="!canGrade && f.is_locked"
                   @click="downloadFile(f)" title="Tải xuống">↓ Tải</button>
           <button v-if="canManageFiles" class="btn-sm" :disabled="fileAccessPending[f.id]"
                   :aria-label="`${f.is_locked ? 'Mở cho học viên' : 'Khoá tệp'}: ${f.file_name}`"
                   @click="toggleFileAccess(f)">
             {{ fileAccessPending[f.id] ? 'Đang cập nhật…' : f.is_locked ? 'Mở cho học viên' : 'Khoá tệp' }}
           </button>
-          <button v-if="auth.isTeacher" class="btn-icon" :disabled="fileAccessPending[f.id]" @click="deleteFile(f.id)" title="Xoá">🗑️</button>
+          <button v-if="isOwner" class="btn-icon" :disabled="fileAccessPending[f.id]" @click="deleteFile(f.id)" title="Xoá">🗑️</button>
           <p v-if="fileErrors[f.id]" class="error file-error" role="alert">{{ fileErrors[f.id] }}</p>
         </div>
       </div>
 
       <!-- ── Members tab (teacher only) ───────────────── -->
-      <div v-if="activeTab === 'members' && auth.isTeacher">
+      <div v-if="activeTab === 'members' && canGrade">
         <div class="tab-toolbar">
           <button class="btn-secondary" :disabled="exporting" @click="exportRoster">
             {{ exporting ? 'Đang xuất…' : '⬇ Xuất CSV' }}
@@ -147,6 +147,34 @@
             lớp thì vẫn ở trong lớp.
           </p>
         </div>
+        <!-- A TA grades this class but does not own it, so the appointment
+             lives here, next to the roster it affects. -->
+        <div v-if="isOwner" class="assistants-box">
+          <div class="cb-head">
+            <span class="cb-label">Trợ giảng</span>
+            <span v-if="!assistants.length" class="cb-code unset">chưa có</span>
+          </div>
+          <div v-if="assistants.length" class="ta-list">
+            <span v-for="a in assistants" :key="a.id" class="ta-chip">
+              {{ a.full_name || a.email }}
+              <button class="ta-remove" :disabled="!!taBusy" aria-label="Bỏ làm trợ giảng"
+                      @click="removeAssistant(a)">×</button>
+            </span>
+          </div>
+          <form class="ta-add" @submit.prevent="addAssistant">
+            <input v-model.trim="taEmail" class="form-input" type="email" required
+                   placeholder="email tài khoản cần thêm làm trợ giảng" />
+            <button class="btn-primary" type="submit" :disabled="!!taBusy || !taEmail">
+              {{ taBusy === 'add' ? 'Đang thêm…' : '+ Thêm trợ giảng' }}
+            </button>
+          </form>
+          <p v-if="taError" class="error">{{ taError }}</p>
+          <p class="hint">
+            Trợ giảng chấm bài thực hành và xem danh sách học viên của lớp này, nhưng không xoá được
+            khoá học, không giao/sửa bài tập và không đổi điểm tổng kết.
+          </p>
+        </div>
+
         <div v-if="!members.length" class="empty">Chưa có học viên.</div>
         <template v-else>
           <div class="roster-stats">
@@ -182,6 +210,7 @@
                     <div class="who">
                       <strong>{{ m.full_name }}</strong>
                       <span class="muted">{{ m.email }}</span>
+                      <span v-if="m.role === 'assistant'" class="chip ta">trợ giảng</span>
                       <span v-if="m.status !== 'active'" class="chip drop">đã rời lớp</span>
                     </div>
                   </td>
@@ -234,7 +263,7 @@
       </div>
 
       <!-- ── Analytics tab (teacher only) ─────────────────── -->
-      <div v-if="activeTab === 'analytics' && auth.isTeacher">
+      <div v-if="activeTab === 'analytics' && isOwner">
         <ClassAnalytics :class-id="classId" />
       </div>
     </div>
@@ -281,8 +310,18 @@ const files = ref<any[]>([])
 const filesError = ref('')
 const fileErrors = ref<Record<string, string>>({})
 const fileAccessPending = ref<Record<string, boolean>>({})
-const canManageFiles = computed(() => auth.isAdmin || (auth.isTeacher && cls.value?.teacher_id === auth.user?.id))
+// The server tells us what the visitor may do inside this class, which is not
+// the same as their system role: a teacher of another course is a student here,
+// and an assistant grades without ever owning the class.
+const myRole = computed(() => cls.value?.my_role || 'student')
+const isOwner = computed(() => myRole.value === 'teacher')
+const canGrade = computed(() => myRole.value === 'teacher' || myRole.value === 'assistant')
+const canManageFiles = isOwner
 const members = ref<any[]>([])
+const assistants = ref<any[]>([])
+const taEmail = ref('')
+const taBusy = ref('')
+const taError = ref('')
 const enrollmentCode = ref('')
 const showCodeEditor = ref(false)
 const codeDraft = ref('')
@@ -300,8 +339,8 @@ const tabs = computed(() => {
     { key: 'quizzes', label: 'Quiz' },
     { key: 'files', label: 'Tệp' },
   ]
-  if (auth.isTeacher) t.push({ key: 'members', label: 'Học viên' })
-  if (auth.isTeacher) t.push({ key: 'analytics', label: 'Phân tích' })
+  if (canGrade.value) t.push({ key: 'members', label: 'Học viên' })
+  if (isOwner.value) t.push({ key: 'analytics', label: 'Phân tích' })
   return t
 })
 
@@ -359,6 +398,48 @@ async function loadLive() {
   } catch {
     // The count is a live readout; one failed poll keeps showing the last numbers.
   }
+}
+
+async function loadAssistants() {
+  const { data } = await api.get(`/classes/${classId}/assistants`)
+  assistants.value = data
+}
+
+async function addAssistant() {
+  taBusy.value = 'add'
+  taError.value = ''
+  try {
+    const { data } = await api.post(`/classes/${classId}/assistants`, { email: taEmail.value })
+    assistants.value = [...assistants.value, data]
+    taEmail.value = ''
+    // The roster row carries the role too, and it is already on screen.
+    await refreshMembers()
+  } catch (err: any) {
+    const d = err.response?.data?.detail
+    taError.value = typeof d === 'string' ? d : 'Không thêm được trợ giảng'
+  } finally {
+    taBusy.value = ''
+  }
+}
+
+async function removeAssistant(a: any) {
+  if (!window.confirm(`Bỏ ${a.full_name || a.email} làm trợ giảng? Người này vẫn ở trong lớp với vai trò học viên.`)) return
+  taBusy.value = a.id
+  taError.value = ''
+  try {
+    await api.delete(`/classes/${classId}/assistants/${a.id}`)
+    assistants.value = assistants.value.filter((x: any) => x.id !== a.id)
+    await refreshMembers()
+  } catch {
+    taError.value = 'Không bỏ được trợ giảng, vui lòng thử lại'
+  } finally {
+    taBusy.value = ''
+  }
+}
+
+async function refreshMembers() {
+  const { data } = await api.get(`/classes/${classId}/students`)
+  members.value = data.sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'vi'))
 }
 
 /** One CSV per class, one column per assignment — the same rows the table shows. */
@@ -525,7 +606,7 @@ async function toggleFileAccess(f: any) {
 }
 
 async function openInJamovi(f: any) {
-  if (!auth.isTeacher && f.is_locked) return
+  if (!canGrade.value && f.is_locked) return
   fileErrors.value[f.id] = ''
   try {
     // Do not await anything before this helper: Safari needs the tab opened in the click.
@@ -536,7 +617,7 @@ async function openInJamovi(f: any) {
 }
 
 async function downloadFile(f: any) {
-  if (!auth.isTeacher && f.is_locked) return
+  if (!canGrade.value && f.is_locked) return
   fileErrors.value[f.id] = ''
   try {
     await downloadCsv(`/classes/${classId}/files/${f.id}/download`, f.file_name)
@@ -607,13 +688,17 @@ onMounted(async () => {
     lessons.value = lessonRes.data
     quizzes.value = quizRes.data
     files.value = fileRes.data
-    if (auth.isTeacher) {
-      const [memberRes, codeRes] = await Promise.all([
-        api.get(`/classes/${classId}/students`),
-        api.get(`/classes/${classId}/enrollment-code`),
-      ])
+    if (canGrade.value) {
+      const memberRes = await api.get(`/classes/${classId}/students`)
       members.value = memberRes.data.sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'vi'))
+    }
+    if (isOwner.value) {
+      const [codeRes, assistantRes] = await Promise.all([
+        api.get(`/classes/${classId}/enrollment-code`),
+        api.get(`/classes/${classId}/assistants`),
+      ])
       enrollmentCode.value = codeRes.data.enrollment_code ?? ''
+      assistants.value = assistantRes.data
       await loadLive()
       liveTimer = window.setInterval(loadLive, 15000)
     }
@@ -666,6 +751,15 @@ onUnmounted(() => {
 .table th { background: var(--amber-50); font-weight: 700; color: var(--amber-800); }
 .table tr:last-child td { border-bottom: none; }
 /* Members tab */
+.assistants-box { background: #fff; border: 1.5px solid var(--amber-200); border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 1.25rem; }
+.ta-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.ta-chip { display: inline-flex; align-items: center; gap: 0.35rem; background: #EDE9FE; color: #5B21B6;
+  border: 1px solid #DDD6FE; border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.82rem; font-weight: 600; }
+.ta-remove { border: none; background: transparent; color: #5B21B6; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0.1rem; }
+.ta-remove:hover { color: #312E81; }
+.ta-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+.ta-add { display: flex; gap: 0.5rem; align-items: center; max-width: 480px; }
+.chip.ta { background: #EDE9FE; color: #5B21B6; }
 .roster-stats { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1rem; }
 .rs { background: #fff; border: 1px solid var(--amber-200); border-radius: 10px; padding: 0.5rem 0.9rem; box-shadow: 0 1px 4px var(--color-card-shadow); }
 .rs .v { display: block; font-size: 1.15rem; font-weight: 700; color: var(--amber-800); }

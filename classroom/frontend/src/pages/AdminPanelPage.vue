@@ -42,6 +42,7 @@
                 <td class="email-cell">{{ u.email }}</td>
                 <td>
                   <span class="role-badge" :class="effectiveRole(u.roles)">{{ roleLabelVi(effectiveRole(u.roles)) }}</span>
+                  <span v-if="u.roles.includes('moderator')" class="role-badge moderator">Kiểm duyệt</span>
                 </td>
                 <td>
                   <span class="status-badge" :class="u.is_active ? 'active' : 'inactive'">
@@ -55,6 +56,11 @@
                     <option value="teacher">Giáo viên</option>
                     <option value="admin">Quản trị</option>
                   </select>
+                  <!-- Moderator is additive: it sits beside any of the three above. -->
+                  <button class="btn-sm" :class="{ on: u.roles.includes('moderator') }"
+                          @click="toggleModerator(u)">
+                    {{ u.roles.includes('moderator') ? 'Tắt kiểm duyệt' : 'Làm kiểm duyệt' }}
+                  </button>
                   <button class="btn-sm" :class="u.is_active ? 'danger' : ''"
                           @click="toggleActive(u)">{{ u.is_active ? 'Khoá' : 'Mở khoá' }}</button>
                 </td>
@@ -87,6 +93,36 @@
         <div v-for="s in settings" :key="s.key" class="setting-row">
           <label>{{ s.key }}</label>
           <input class="form-input" v-model="s.value" @blur="saveSetting(s)" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher-role requests tab -->
+    <div v-if="activeTab === 'requests'">
+      <div v-if="requestsLoading" class="loading">Đang tải…</div>
+      <div v-else-if="!requests.length" class="empty">Không có yêu cầu nào đang chờ.</div>
+      <div v-else class="request-list">
+        <p class="meta">{{ requests.length }} yêu cầu đang chờ duyệt</p>
+        <div v-for="r in requests" :key="r.id" class="request-card">
+          <div class="request-head">
+            <div>
+              <strong>{{ r.full_name }}</strong>
+              <span class="email-cell">· {{ r.email }}</span>
+            </div>
+            <span class="meta">{{ fmtDate(r.created_at) }}</span>
+          </div>
+          <div v-if="r.institution" class="request-inst">{{ r.institution }}</div>
+          <p class="request-reason">{{ r.reason }}</p>
+          <div class="request-actions">
+            <input class="form-input note-input" v-model="r.review_note"
+                   placeholder="Ghi chú cho người gửi (tuỳ chọn)" />
+            <button class="btn-sm approve" :disabled="reviewing === r.id" @click="review(r, 'approve')">
+              {{ reviewing === r.id ? 'Đang…' : 'Duyệt' }}
+            </button>
+            <button class="btn-sm danger" :disabled="reviewing === r.id" @click="review(r, 'reject')">
+              Từ chối
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -141,6 +177,7 @@ import api from '@/api/client'
 
 const tabs = [
   { key: 'users', label: 'Người dùng' },
+  { key: 'requests', label: 'Duyệt quyền tạo lớp' },
   { key: 'stats', label: 'Thống kê' },
   { key: 'settings', label: 'Cài đặt' },
 ]
@@ -151,6 +188,10 @@ const usersTotal = ref(0)
 const usersPage = ref(1)
 const usersPageSize = 20
 const usersLoading = ref(false)
+
+const requests = ref<any[]>([])
+const requestsLoading = ref(false)
+const reviewing = ref('')
 
 const stats = ref<any>(null)
 const statsLoading = ref(false)
@@ -261,12 +302,52 @@ async function toggleActive(u: any) {
   await loadUsers(usersPage.value)
 }
 
+async function toggleModerator(u: any) {
+  const isModerator = u.roles.includes('moderator')
+  if (isModerator) {
+    await api.delete(`/admin/users/${u.id}/roles/moderator`).catch(() => {})
+  } else {
+    await api.post(`/admin/users/${u.id}/roles/moderator`).catch(() => {})
+  }
+  await loadUsers(usersPage.value)
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
+  } catch {
+    return ''
+  }
+}
+
+async function loadRequests() {
+  requestsLoading.value = true
+  try {
+    const { data } = await api.get('/teacher-requests/pending')
+    requests.value = data
+  } finally {
+    requestsLoading.value = false
+  }
+}
+
+async function review(r: any, decision: 'approve' | 'reject') {
+  reviewing.value = r.id
+  try {
+    await api.post(`/teacher-requests/${r.id}/${decision}`, { note: r.review_note || null })
+    requests.value = requests.value.filter((x) => x.id !== r.id)
+  } finally {
+    reviewing.value = ''
+  }
+}
+
 async function saveSetting(s: any) {
   await api.put('/admin/settings', { [s.key]: s.value })
 }
 
 onMounted(() => loadUsers())
 watch(activeTab, (tab) => {
+  if (tab === 'requests') loadRequests()
   if (tab === 'stats' && !stats.value) loadStats()
   if (tab === 'settings' && !settings.value.length) loadSettings()
 })
@@ -297,6 +378,7 @@ h1 { color: var(--amber-800); margin-bottom: 1.5rem; }
 .role-badge.admin { background: #FEF3C7; color: #92400E; }
 .role-badge.teacher { background: #D1FAE5; color: #065F46; }
 .role-badge.user { background: #EFF6FF; color: #1E40AF; }
+.role-badge.moderator { background: #EDE9FE; color: #5B21B6; margin-left: 0.3rem; }
 .status-badge { padding: 0.15rem 0.55rem; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
 .status-badge.active { background: #D1FAE5; color: #065F46; }
 .status-badge.inactive { background: #FEE2E2; color: #991B1B; }
@@ -307,6 +389,19 @@ h1 { color: var(--amber-800); margin-bottom: 1.5rem; }
 .btn-sm:hover { background: var(--amber-100); }
 .btn-sm.danger { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
 .btn-sm.danger:hover { background: #FEE2E2; }
+.btn-sm.on { background: #EDE9FE; color: #5B21B6; border-color: #DDD6FE; }
+.btn-sm.on:hover { background: #DDD6FE; }
+.btn-sm.approve { background: #F0FDF4; color: #166534; border-color: #BBF7D0; }
+.btn-sm.approve:hover { background: #DCFCE7; }
+.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+.empty { padding: 2rem; color: var(--color-text-muted); }
+.request-list { display: flex; flex-direction: column; gap: 0.75rem; max-width: 780px; }
+.request-card { background: #fff; border: 1.5px solid var(--amber-200); border-radius: 10px; padding: 0.9rem 1.1rem; }
+.request-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.request-inst { font-size: 0.82rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+.request-reason { font-size: 0.88rem; margin: 0.5rem 0 0.75rem; }
+.request-actions { display: flex; gap: 0.5rem; align-items: center; }
+.note-input { flex: 1; }
 .btn-primary { background: var(--color-primary); color: #fff; border: none; padding: 0.5rem 1.1rem; border-radius: 7px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
 .btn-primary:hover { background: var(--color-primary-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }

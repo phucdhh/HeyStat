@@ -21,12 +21,13 @@
         <div class="card-icon">👤</div>
         <div class="card-label">Thông tin cá nhân</div>
       </RouterLink>
-      <a href="/" target="_blank" class="card heystat-card">
+      <a href="/app" target="_blank" class="card heystat-card">
         <div class="card-icon">📊</div>
-        <div class="card-label">Mở HeyStat <span style="font-size:0.75rem;">↗</span></div>
+        <div class="card-label">Mở Jamovi <span style="font-size:0.75rem;">↗</span></div>
         <div class="card-hint">Phân tích & vẽ biểu đồ</div>
       </a>
     </div>
+    <RequestTeacherRole />
     <MyAnalytics v-if="!auth.isTeacher" />
   </div>
 </template>
@@ -34,6 +35,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import MyAnalytics from '@/components/MyAnalytics.vue'
+import RequestTeacherRole from '@/components/RequestTeacherRole.vue'
 const auth = useAuthStore()
 </script>
 

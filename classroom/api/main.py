@@ -30,6 +30,9 @@ from routers.quizzes import router as quizzes_router
 from routers.my_files import router as my_files_router, shared_router
 from routers.analytics import router as analytics_router
 from routers.help import router as help_router
+from routers.public import router as public_router
+from routers.teacher_requests import router as teacher_requests_router
+from routers.moderation import router as moderation_router
 
 
 @asynccontextmanager
@@ -78,6 +81,9 @@ app.include_router(my_files_router,     prefix="/api/v1")
 app.include_router(shared_router,       prefix="/api/v1")
 app.include_router(analytics_router,    prefix="/api/v1")
 app.include_router(help_router,         prefix="/api/v1")
+app.include_router(public_router,       prefix="/api/v1")
+app.include_router(teacher_requests_router, prefix="/api/v1")
+app.include_router(moderation_router,   prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

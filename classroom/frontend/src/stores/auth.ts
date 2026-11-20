@@ -20,6 +20,10 @@ export const useAuthStore = defineStore('auth', () => {
     () => user.value?.roles.includes('teacher') || user.value?.roles.includes('admin'),
   )
   const isAdmin = computed(() => user.value?.roles.includes('admin'))
+  // A moderator only reviews shared files; it never unlocks the admin panel.
+  const isModerator = computed(
+    () => user.value?.roles.includes('moderator') || user.value?.roles.includes('admin'),
+  )
 
   async function login(email: string, password: string) {
     const { data } = await axios.post('/api/v1/auth/login', { email, password })
@@ -51,10 +55,20 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('access_token')
   }
 
-  // Restore session on page reload
-  if (accessToken.value && !user.value) {
-    fetchMe().catch(() => logout())
+  // A hard page load has the token but not the profile yet, and the router's
+  // role checks read that profile — so the guard waits on this one request
+  // instead of bouncing an admin who just typed /classroom/admin.
+  let session: Promise<void> | null = null
+  function ensureSession(): Promise<void> {
+    if (!accessToken.value || user.value) return Promise.resolve()
+    if (!session) {
+      session = fetchMe().catch(() => logout()).finally(() => { session = null })
+    }
+    return session
   }
 
-  return { accessToken, user, isLoggedIn, isTeacher, isAdmin, login, refresh, fetchMe, logout }
+  // Restore session on page reload
+  ensureSession()
+
+  return { accessToken, user, isLoggedIn, isTeacher, isModerator, isAdmin, login, refresh, fetchMe, logout, ensureSession }
 })

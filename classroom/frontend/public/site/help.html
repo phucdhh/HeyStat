@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn sử dụng HeyStat</title>
+<meta name="description" content="Hướng dẫn dùng HeyStat cho sinh viên, học sinh và giảng viên: đăng nhập, vào lớp, thực hành jamovi, nộp file .omv, giao bài và chấm điểm.">
+<link rel="icon" href="/classroom/favicon.svg">
+<style>
+  :root{
+    --amber-50:#FFFBEB; --amber-100:#FEF3C7; --amber-200:#FDE68A; --amber-300:#FCD34D;
+    --amber-400:#FBBF24; --amber-500:#F59E0B; --amber-600:#D97706; --amber-700:#B45309;
+    --amber-800:#92400E; --amber-900:#78350F;
+    --ink:#1F2937; --muted:#6B7280; --line:#E5E7EB; --bg:#FFFFFF; --soft:#FAFAFA;
+    --radius:14px; --shadow:0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --max:1120px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; color:var(--ink); background:var(--bg); line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--amber-700); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--max); margin:0 auto; padding:0 20px}
+  .muted{color:var(--muted)}
+  code, kbd{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.88em;
+    background:var(--soft); border:1px solid var(--line); border-radius:6px; padding:1px 6px;
+  }
+  kbd{background:#fff; box-shadow:0 1px 0 var(--line)}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; padding:9px 15px; border-radius:10px;
+    font-weight:600; font-size:.9rem; background:#fff; color:var(--amber-800);
+    border:1px solid var(--amber-200); white-space:nowrap;
+  }
+  .btn:hover{background:var(--amber-50); text-decoration:none}
+  .btn-dark{background:#111827; color:#fff; border-color:#111827}
+
+  header.site{
+    position:sticky; top:0; z-index:30; background:rgba(255,255,255,.94);
+    backdrop-filter:saturate(180%) blur(8px); border-bottom:1px solid var(--line);
+  }
+  .nav{display:flex; align-items:center; gap:16px; height:64px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--ink)}
+  .brand:hover{text-decoration:none}
+  .mark{width:32px;height:32px;border-radius:9px;flex:none;background:linear-gradient(135deg,var(--amber-400),var(--amber-600));display:grid;place-items:center;color:#fff;font-weight:800;font-size:.8rem}
+  .nav .here{font-size:.9rem; color:var(--muted)}
+  .nav nav{margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+
+  .layout{display:grid; grid-template-columns:270px 1fr; gap:40px; align-items:start; padding:36px 0 72px}
+  aside{position:sticky; top:88px; max-height:calc(100vh - 108px); overflow:auto; padding-right:6px}
+  aside h2{font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px}
+  aside ol{list-style:none; counter-reset:t; margin:0; padding:0}
+  aside li{counter-increment:t; margin:0; padding:2px 0}
+  aside li a{
+    display:flex; gap:10px; align-items:baseline; padding:7px 10px; border-radius:9px;
+    color:#374151; font-size:.92rem; border-left:2px solid transparent;
+  }
+  aside li a::before{content:counter(t) "."; color:var(--amber-600); font-weight:700; font-size:.85rem; min-width:20px}
+  aside li a:hover{background:var(--amber-50); text-decoration:none; color:var(--amber-900)}
+  aside li a.active{background:var(--amber-50); border-left-color:var(--amber-500); color:var(--amber-900); font-weight:600}
+  .aside-cta{margin-top:18px; padding:14px; border:1px solid var(--amber-200); background:var(--amber-50); border-radius:12px}
+  .aside-cta p{margin:0 0 10px; font-size:.86rem; color:var(--amber-900)}
+
+  main h1{font-size:2.1rem; margin:0 0 6px; letter-spacing:-.02em}
+  main .sub{margin:0 0 26px; color:var(--muted); font-size:1.02rem}
+  section{scroll-margin-top:84px; padding:14px 0 26px; border-top:1px solid var(--line)}
+  section:first-of-type{border-top:0; padding-top:0}
+  section h2{font-size:1.4rem; margin:0 0 4px; display:flex; gap:12px; align-items:baseline}
+  section h2 .n{
+    font-size:.95rem; font-weight:800; color:var(--amber-800); background:var(--amber-100);
+    border:1px solid var(--amber-200); border-radius:9px; padding:2px 10px; flex:none;
+  }
+  section h3{font-size:1.05rem; margin:22px 0 6px}
+  p{margin:10px 0}
+  ul,ol{margin:8px 0 8px; padding-left:22px}
+  li{margin:4px 0}
+  .callout{border:1px solid var(--amber-200); background:var(--amber-50); border-radius:12px; padding:14px 16px; margin:16px 0; font-size:.95rem}
+  .callout.warn{border-color:#FECACA; background:#FEF2F2}
+  .callout b{color:var(--amber-900)}
+  .callout.warn b{color:#991B1B}
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .card{border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; background:#fff; box-shadow:var(--shadow)}
+  .card h4{margin:0 0 6px; font-size:.98rem}
+  .card p, .card ul{font-size:.93rem; color:#374151}
+  table{width:100%; border-collapse:collapse; font-size:.93rem; margin:14px 0}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{background:var(--soft); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--amber-900)}
+  .pill{display:inline-block; font-size:.78rem; font-weight:700; padding:2px 9px; border-radius:999px; background:var(--amber-100); color:var(--amber-800); border:1px solid var(--amber-200); white-space:nowrap}
+  .qa dt{font-weight:600; margin-top:14px}
+  .qa dd{margin:4px 0 0; color:#374151; font-size:.95rem}
+  .steps{list-style:none; counter-reset:s; padding:0; margin:12px 0}
+  .steps li{counter-increment:s; position:relative; padding:8px 0 8px 38px; border-top:1px dashed var(--line)}
+  .steps li:first-child{border-top:0}
+  .steps li::before{content:counter(s); position:absolute; left:0; top:8px; width:26px;height:26px;border-radius:8px;background:var(--amber-100);color:var(--amber-800);font-weight:700;font-size:.85rem;display:grid;place-items:center}
+  .toolbar-demo{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0}
+
+  footer{border-top:1px solid var(--line); background:var(--soft); padding:30px 0 40px; font-size:.92rem}
+  .foot{display:flex; gap:20px; flex-wrap:wrap; justify-content:space-between; align-items:center}
+
+  @media (max-width:960px){
+    .layout{grid-template-columns:1fr; gap:24px}
+    aside{position:static; max-height:none; border:1px solid var(--line); border-radius:12px; padding:14px}
+    .cols{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark">HS</span> HeyStat</a>
+    <span class="here">Hướng dẫn sử dụng</span>
+    <nav>
+      <a href="/">Trang chủ</a>
+      <a href="/classroom/login">Đăng nhập</a>
+      <a class="btn btn-dark" href="/app">Mở Jamovi</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <aside>
+    <h2>Nội dung</h2>
+    <ol id="toc">
+      <li><a href="#about">HeyStat là gì</a></li>
+      <li><a href="#accounts">Tài khoản &amp; vai trò</a></li>
+      <li><a href="#student">Sinh viên / học sinh</a></li>
+      <li><a href="#teacher">Giảng viên / giảng viên hướng dẫn</a></li>
+      <li><a href="#jamovi">Giao diện jamovi</a></li>
+      <li><a href="#save">Lưu, tải và nộp file</a></li>
+      <li><a href="#faq">Lỗi thường gặp</a></li>
+      <li><a href="#contact">Liên hệ hỗ trợ</a></li>
+    </ol>
+    <div class="aside-cta">
+      <p>Đã hiểu các bước? Vào thực hành ngay.</p>
+      <a class="btn btn-dark" href="/app">Mở Jamovi</a>
+    </div>
+  </aside>
+
+  <main>
+    <h1>Hướng dẫn sử dụng HeyStat</h1>
+    <p class="sub">Dành cho sinh viên, học sinh và giảng viên. Đọc 5 phút là làm được bài thực hành đầu tiên.</p>
+
+    <section id="about">
+      <h2><span class="n">1</span> HeyStat là gì</h2>
+      <p>
+        HeyStat là môi trường thực hành thống kê trên trình duyệt, chạy phần mềm
+        <strong>jamovi</strong> mã nguồn mở trên máy chủ của trường. Bạn không cần cài đặt
+        jamovi, R hay Java: mở link là có giao diện phân tích đầy đủ, kèm một lớp học
+        (Classroom) để nhận bài tập, nộp file <code>.omv</code> và xem điểm.
+      </p>
+      <div class="cols">
+        <div class="card">
+          <h4>Jamovi trên trình duyệt</h4>
+          <p>Bảng dữ liệu, các module phân tích (tần suất, tương quan, hồi quy, T-test, ANOVA, Cronbach's Alpha…), và cửa sổ Output chứa bảng kết quả.</p>
+        </div>
+        <div class="card">
+          <h4>Lớp học (Classroom)</h4>
+          <p>Nơi giảng viên giao dữ liệu và bài tập, trợ giảng chấm, sinh viên nộp bài và làm trắc nghiệm: <a href="/classroom">/classroom</a>.</p>
+        </div>
+        <div class="card">
+          <h4>Bộ dữ liệu mẫu</h4>
+          <p>Khi đăng nhập, bạn mở được các file mẫu (.csv, .sav, .omv) để luyện tập mà chưa cần vào lớp nào.</p>
+        </div>
+        <div class="card">
+          <h4>Chia sẻ file</h4>
+          <p>Gửi một file <code>.omv</code> cho nhóm bằng link có thời hạn; nội dung chia sẻ công khai có kiểm duyệt.</p>
+        </div>
+      </div>
+      <p class="small muted">Cần đăng nhập để thực hành Jamovi và dùng Classroom. Trang chủ và trang hướng dẫn này thì ai cũng xem được.</p>
+    </section>
+
+    <section id="accounts">
+      <h2><span class="n">2</span> Tài khoản &amp; vai trò</h2>
+      <h3>Tạo tài khoản</h3>
+      <ol class="steps">
+        <li>Mở <a href="/classroom/register"><code>/classroom/register</code></a> từ trang chủ.</li>
+        <li>Nhập họ tên, email (ưu tiên email trường) và mật khẩu.</li>
+        <li>Sau khi tạo xong, đăng nhập tại <a href="/classroom/login"><code>/classroom/login</code></a>.</li>
+      </ol>
+      <p>
+        Đăng nhập rồi thì nút <em>Mở Jamovi</em> (<code>/app</code>) đưa bạn vào thẳng phiên làm việc,
+        còn <a href="/classroom">Classroom</a> quản lý lớp học của bạn. Phiên đăng nhập kéo dài nhiều ngày,
+        bạn không phải nhập lại mật khẩu mỗi lần mở.
+      </p>
+      <h3>Bảy vai trò, hai cấp</h3>
+      <table>
+        <thead><tr><th>Cấp</th><th>Vai trò</th><th>Quyền hạn</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="4">Toàn hệ thống</td><td><span class="pill">Guest</span></td><td>Chưa đăng nhập. Chỉ xem trang chủ, danh sách khoá học công khai và hướng dẫn này.</td></tr>
+          <tr><td><span class="pill">User</span></td><td>Mọi tài khoản đã đăng nhập: thực hành Jamovi, mở file mẫu, vào lớp bằng mã lớp, nộp bài, làm trắc nghiệm.</td></tr>
+          <tr><td><span class="pill">Moderator</span></td><td>Kiểm duyệt nội dung cộng đồng: xem và gỡ link chia sẻ file vi phạm. Không cấu hình máy chủ, không quản trị tài khoản.</td></tr>
+          <tr><td><span class="pill">Admin</span></td><td>Toàn quyền: gán/thu hồi vai trò, duyệt yêu cầu mở quyền tạo lớp, theo dõi tài nguyên máy chủ.</td></tr>
+          <tr><td rowspan="3">Trong một lớp</td><td><span class="pill">Student</span></td><td>Xem bài học, tải dữ liệu, nộp <code>.omv</code>, làm trắc nghiệm, xem điểm của mình.</td></tr>
+          <tr><td><span class="pill">Assistant</span></td><td>Trợ giảng: chấm bài thực hành, xem danh sách lớp, giải đáp thắc mắc. Không xoá khoá học, không sửa điểm tổng kết.</td></tr>
+          <tr><td><span class="pill">Teacher</span></td><td>Trong lớp mình tạo: giao bài, tải dữ liệu, mở/khoá file, chấm điểm, quản lý danh sách.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <b>Giảng viên cần được duyệt để tạo lớp.</b> Một tài khoản mới ở mức <em>User</em> chưa có quyền tạo khoá học.
+        Sau khi đăng nhập, vào <a href="/classroom">Classroom</a> và gửi yêu cầu mở quyền tạo lớp (kèm tên đơn vị và lý do);
+        Admin duyệt thì tính năng tạo lớp sẽ bật cho bạn. Cách này giữ danh sách khoá học sạch, không lớp giả mạo.
+      </div>
+    </section>
+
+    <section id="student">
+      <h2><span class="n">3</span> Dành cho sinh viên / học sinh</h2>
+      <h3>Vào lớp học</h3>
+      <ol class="steps">
+        <li>Đăng nhập, mở <a href="/classroom">Classroom</a>.</li>
+        <li>Chọn <em>Tham gia lớp</em> và nhập <strong>mã lớp</strong> do giảng viên thông báo.</li>
+        <li>Lớp của bạn xuất hiện ở bảng điều khiển kèm bài tập, bài học và điểm số.</li>
+      </ol>
+      <h3>Làm một bài tập</h3>
+      <ol class="steps">
+        <li>Vào lớp, mở thẻ <em>Bài tập</em>, chọn bài đang tới hạn nộp.</li>
+        <li>Bấm <em>Mở file</em> — dữ liệu của bài tập hiện thẳng trong jamovi, phía dưới còn thêm nút <span class="pill">🔄 Đồng bộ kết quả</span>.</li>
+        <li>Thực hiện phân tích: bảng tần số, biểu đồ, kiểm định… kết quả hiện ở cửa sổ Output.</li>
+        <li>Kết thúc: bấm <span class="pill">🔄 Đồng bộ kết quả</span> rồi <span class="pill">💾 Lưu file</span>, hoặc <span class="pill">⬇ Download</span> để lấy file <code>.omv</code> về máy rồi nộp thủ công.</li>
+      </ol>
+      <div class="callout">
+        <b>Mẹo:</b> đặt tên file rõ ràng ngay từ đầu (ví dụ <code>BT03_Nhom5.omv</code>) — HeyStat lấy tên tiêu đề bài làm khi lưu và khi nộp.
+      </div>
+      <h3>Trắc nghiệm thống kê</h3>
+      <p>Trong lớp, thẻ <em>Trắc nghiệm</em> có bộ câu hỏi theo chương. Bạn làm nhiều lần để tự kiểm tra; câu nào sai sẽ có đáp án và lời giải, điểm lần làm cao nhất (theo quy định của giảng viên) được ghi nhận.</p>
+      <h3>Ôn lại bài đã nộp</h3>
+      <p>Mở bài tập, xem phần <em>Bài nộp của tôi</em> để biết đã nộp chưa, được chấm bao nhiêu và giảng viên nhận xét gì. Muốn sửa, nộp lại trước hạn: bản mới nhất là bản được chấm.</p>
+    </section>
+
+    <section id="teacher">
+      <h2><span class="n">4</span> Dành cho giảng viên</h2>
+      <h3>Mở quyền tạo lớp và tạo khoá học</h3>
+      <ol class="steps">
+        <li>Đăng nhập, gửi <em>yêu cầu mở quyền tạo lớp</em> trong Classroom; chờ Admin duyệt (bạn sẽ nhận thông báo trong ứng dụng).</li>
+        <li>Sau khi được duyệt: <em>Tạo lớp</em> → đặt tên lớp, thời gian bắt đầu/kết thúc, sĩ số tối đa.</li>
+        <li>Hệ thống sinh <strong>mã lớp</strong>; bạn có thể tự đặt mã dễ nhớ. Phổ biến mã này cho lớp (không cần danh sách email).</li>
+      </ol>
+      <h3>Giao dữ liệu và bài tập</h3>
+      <ol class="steps">
+        <li>Vào lớp, thẻ <em>Dữ liệu / File</em>: tải lên <code>.csv</code>, <code>.sav</code>, <code>.xlsx</code> hoặc <code>.omv</code>.</li>
+        <li><em>Tạo bài tập</em>: chọn file dữ liệu, đặt tên, hạn nộp, và chọn <strong>khoá file</strong> nếu muốn sinh viên chỉ đọc (không sửa được file gốc).</li>
+        <li>Sinh viên bấm <em>Mở file</em> là làm ngay trên trình duyệt; bạn vẫn chỉnh sửa được file của mình.</li>
+      </ol>
+      <h3>Chấm bài và nhận xét</h3>
+      <p>Trong bài tập, mở <em>Danh sách bài nộp</em>: bấm vào một bài để mở lại <code>.omv</code> của sinh viên trong jamovi, xem đúng bảng kết quả họ làm, sau đó cho điểm và viết nhận xét. Sinh viên nhận được thông báo ngay khi bạn lưu điểm.</p>
+      <h3>Trợ giảng</h3>
+      <p>Ở thẻ <em>Trợ giảng</em> của lớp, nhập email tài khoản cần thêm. Trợ giảng chấm bài và xem danh sách lớp như bạn, nhưng không xoá khoá học, không sửa bài tập, và không đổi điểm tổng kết.</p>
+      <h3>Danh sách lớp</h3>
+      <p>Thẻ <em>Sinh viên</em> cho biết ai đã vào lớp, trạng thái nộp bài và điểm từng bài; bạn loại một người khỏi danh sách khi cần, hoặc xuất bảng điểm để lưu.</p>
+      <div class="callout">
+        <b>Giới hạn nên biết:</b> máy chủ chạy jamovi có sức chứa nhất định theo thời điểm. Hãy đặt hạn nộp cách nhau để cả lớp không mở bài cùng một phút, và cho phép nộp lại nếu cần chấm lần hai.
+      </div>
+    </section>
+
+    <section id="jamovi">
+      <h2><span class="n">5</span> Giao diện jamovi cơ bản</h2>
+      <div class="cols">
+        <div class="card">
+          <h4>Thanh trên (ribbon)</h4>
+          <p>Các module phân tích: <em>Data</em> biến đổi dữ liệu, <em>Analyses</em> tần số/mô tả, <em>T-Tests</em>, <em>ANOVA</em>, <em>Regression</em>, <em>Correlation</em>, <em>Frequencies</em>… Muốn module nào, bấm vào đó rồi kéo biến sang ô tương ứng.</p>
+        </div>
+        <div class="card">
+          <h4>Bảng dữ liệu (bên trái)</h4>
+          <p>Mỗi cột là một biến với loại <em>nominal / ordinal / continuous</em>. Chuột phải vào cột để đổi tên, đổi loại biến, thêm giá trị thiếu (missing) hay tính biến mới.</p>
+        </div>
+        <div class="card">
+          <h4>Cửa sổ Output (bên phải)</h4>
+          <p>Kết quả cập nhật ngay khi bạn đổi lựa chọn. Bấm vào bảng để sao chép, hoặc bấm chuột phải để ẩn/hiện, đổi định dạng số thập phân.</p>
+        </div>
+        <div class="card">
+          <h4>Thanh HeyStat (góc dưới)</h4>
+          <p>Do HeyStat thêm vào, gồm: <span class="pill">💾 Lưu file</span> <span class="pill">⬇ Download</span> <span class="pill">← Lớp học</span> và <span class="pill">🔄 Đồng bộ kết quả</span> khi bạn mở từ một bài tập.</p>
+        </div>
+      </div>
+      <h3>Quy trình một bài phân tích</h3>
+      <ol class="steps">
+        <li>Mở dữ liệu (từ bài tập, từ file mẫu, hoặc kéo thả <code>.csv</code>/<code>.sav</code> vào bảng).</li>
+        <li>Kiểm tra biến: tên, loại biến, giá trị thiếu — sửa ở thẻ <em>Data</em>.</li>
+        <li>Chọn phép phân tích ở ribbon, kéo biến vào ô, chọn thêm thống kê/biểu đồ cần thiết.</li>
+        <li>Đọc Output, đổi định dạng số nếu cần, rồi lưu/nộp bài.</li>
+      </ol>
+    </section>
+
+    <section id="save">
+      <h2><span class="n">6</span> Lưu, tải và nộp file</h2>
+      <div class="toolbar-demo">
+        <span class="pill">🔄 Đồng bộ kết quả</span>
+        <span class="pill">💾 Lưu file</span>
+        <span class="pill">⬇ Download</span>
+        <span class="pill">← Lớp học</span>
+      </div>
+      <table>
+        <thead><tr><th>Nút</th><th>Khi nào dùng</th><th>Kết quả</th></tr></thead>
+        <tbody>
+          <tr><td><b>🔄 Đồng bộ kết quả</b></td><td>Khi mở bài tập từ Classroom (chỉ nút này hiện ra).</td><td>Gửi phiên làm việc hiện tại thành bài nộp cho bài tập đó.</td></tr>
+          <tr><td><b>💾 Lưu file</b></td><td>Lưu bản làm việc để mở lại sau.</td><td><code>.omv</code> vào kho file cá nhân của bạn trên HeyStat.</td></tr>
+          <tr><td><b>⬇ Download</b></td><td>Cần file trên máy tính, hoặc nộp theo yêu cầu riêng của giảng viên.</td><td>Trình duyệt tải <code>.omv</code> về thư mục Downloads.</td></tr>
+          <tr><td><b>← Lớp học</b></td><td>Hết giờ làm bài, quay lại danh sách bài tập.</td><td>Mở lại Classroom, giữ nguyên bài đang làm.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <b>Ba bước an toàn trước hạn nộp:</b> <em>Đồng bộ kết quả</em> → <em>Lưu file</em> → kiểm tra lại trong lớp thấy bài đã nộp.
+        Nếu trang bị đóng đột ngột, bạn vẫn còn bản đã lưu trong kho file cá nhân.
+      </div>
+      <p class="small muted">File <code>.omv</code> chứa cả dữ liệu lẫn toàn bộ Output, nên chỉ cần nộp một file này là giảng viên xem được bài làm của bạn.</p>
+    </section>
+
+    <section id="faq">
+      <h2><span class="n">7</span> Lỗi thường gặp</h2>
+      <dl class="qa">
+        <dt>Mở <code>/app</code> hoặc <code>/classroom</code> bị nhảy về trang đăng nhập</dt>
+        <dd>Bạn chưa đăng nhập (hoặc phiên đã hết hạn). Đăng nhập lại rồi mở lại link. Trang chủ và trang này không cần đăng nhập.</dd>
+
+        <dt>Trang jamovi trắng, xoay vòng, hoặc “không phản hồi”</dt>
+        <dd>Tắt chế độ tăng tốc phần tử chặn script của trình duyệt, thử cửa sổ riêng/ẩn danh, hoặc trình duyệt khác (Chrome, Edge, Safari, Firefox). Kiểm tra đường truyền; khi máy chủ quá tải, hãy thử lại sau vài phút.</dd>
+
+        <dt>“File đang được mở ở nơi khác” / không sửa được file</dt>
+        <dd>Giảng viên để file ở chế độ chỉ-read, hoặc chính bạn mở file đó ở hai cửa sổ. Đóng cửa sổ kia, hoặc <em>Lưu file</em> thành bản mang tên khác rồi làm trên bản đó.</dd>
+
+        <dt>Đã bấm nộp mà lớp vẫn báo “chưa nộp”</dt>
+        <dd>Quay lại bài tập và tải lại trang. Nếu vẫn thiếu, bấm <em>Đồng bộ kết quả</em> lần nữa; trước khi hết hạn bạn nộp lại bao nhiêu lần cũng được, bản mới nhất là bản được chấm.</dd>
+
+        <dt>Kết quả phân tích không hiện ra hoặc báo lỗi module</dt>
+        <dd>Thường do loại biến chưa đúng (ví dụ biến định lượng bị đặt là nominal) hoặc còn giá trị thiếu. Kiểm tra ở thẻ <em>Data</em>, thử lại phép phân tích. Nếu module chưa được cài trên máy chủ, hãy báo cho giảng viên.</dd>
+
+        <dt>Tải file về mà tên bị lỗi tiếng Việt</dt>
+        <dd>Đặt tiêu đề file không dấu rồi <em>Download</em>; hoặc lưu vào tài khoản và mở lại từ kho file của bạn.</dd>
+
+        <dt>Mở hai lớp / hai bài cùng lúc</dt>
+        <dd>Mỗi cửa sổ là một phiên làm việc riêng. Đóng cửa sổ không dùng để giải phóng tài nguyên cho lớp.</dd>
+      </dl>
+      <div class="callout warn">
+        <b>Trước khi báo lỗi</b>, hãy ghi lại: tên lớp và bài tập, tên file, thao tác vừa làm, ảnh màn hình thông báo và thời điểm gặp sự cố. Nhờ vậy việc tìm nguyên nhân nhanh hơn nhiều.
+      </div>
+    </section>
+
+    <section id="contact">
+      <h2><span class="n">8</span> Liên hệ hỗ trợ</h2>
+      <ul>
+        <li><b>Về lớp học và bài tập:</b> hỏi giảng viên hoặc trợ giảng của lớp — họ thấy trạng thái nộp bài của bạn.</li>
+        <li><b>Về tài khoản, quyền tạo lớp, kỹ thuật:</b> liên hệ Admin qua Signal <strong>+84 979 555 375</strong>, kèm mô tả như hướng dẫn ở mục 7.</li>
+        <li><b>Mở Jamovi để thực hành:</b> <a href="/app">/app</a> · <b>Vào lớp học:</b> <a href="/classroom">/classroom</a> · <b>Trang chủ:</b> <a href="/">/</a></li>
+      </ul>
+      <p class="small muted">HeyStat xây dựng trên jamovi — phần mềm thống kê mã nguồn mở. Hướng dẫn này cập nhật ngày 20/11/2026.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <span class="muted">HeyStat · Hướng dẫn sử dụng</span>
+    <span>
+      <a href="/">Trang chủ</a> · <a href="/classroom">Classroom</a> · <a href="/app">Mở Jamovi</a> · Hỗ trợ: Signal +84 979 555 375
+    </span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var links = Array.prototype.slice.call(document.querySelectorAll("#toc a"));
+  var byId = {};
+  links.forEach(function (a) {
+    var id = a.getAttribute("href").slice(1);
+    var section = document.getElementById(id);
+    if (section) byId[id] = a;
+  });
+
+  function setCurrent(id) {
+    links.forEach(function (a) { a.classList.remove("active"); });
+    if (byId[id]) byId[id].classList.add("active");
+  }
+
+  if ("IntersectionObserver" in window) {
+    var visible = {};
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
+      for (var i = 0; i < links.length; i++) {
+        var id = links[i].getAttribute("href").slice(1);
+        if (visible[id]) { setCurrent(id); break; }
+      }
+    }, { rootMargin: "-80px 0px -60% 0px" });
+    Object.keys(byId).forEach(function (id) { io.observe(document.getElementById(id)); });
+  }
+
+  links.forEach(function (a) {
+    a.addEventListener("click", function () {
+      setCurrent(a.getAttribute("href").slice(1));
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 """Authentication router – register, login, refresh, verify-email, reset-password."""
 import uuid
 import secrets
+from urllib.parse import parse_qs, urlsplit
 from datetime import timedelta, datetime, timezone
 from typing import Optional
 
@@ -154,8 +155,16 @@ async def logout(request: Request, response: Response):
 
 @router.get("/check", status_code=status.HTTP_200_OK)
 async def auth_check(request: Request):
-    """Lightweight endpoint for Nginx auth_request. Validates hs_session cookie
-    OR a temporary hs_shared_session cookie issued for public shared-file viewing."""
+    """Lightweight endpoint for Nginx auth_request.
+
+    Three ways through the gate in front of HeyStat (Jamovi):
+
+    1. ``hs_session`` — a logged-in browser, refreshed on every SPA load.
+    2. ``hs_shared_session`` — temporary cookie issued for public shared-file viewing.
+    3. ``?session=<token>`` in the original URL — the one-off token Classroom mints
+       for a single assignment session. It travels in the iframe URL, so it has to
+       work even in a private window that never stored a cookie.
+    """
     # 1. Regular authenticated user
     session = request.cookies.get(_SESSION_COOKIE)
     if session:
@@ -170,6 +179,16 @@ async def auth_check(request: Request):
         valid = await r.get(f"shared_session:{shared_session}")
         if valid:
             return {"ok": True}
+
+    # 3. A Classroom-issued Jamovi session token in the requested URL
+    original_uri = request.headers.get("x-original-uri", "")
+    if "session=" in original_uri:
+        query = parse_qs(urlsplit(original_uri).query)
+        token = (query.get("session") or [""])[0]
+        if token:
+            r = await get_redis()
+            if await r.get(f"session:{token}"):
+                return {"ok": True}
 
     raise HTTPException(status_code=401, detail="Not authenticated")
 

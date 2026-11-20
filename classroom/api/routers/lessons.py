@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import Class, Lesson, LessonResource, Enrollment, Quiz, User, UserRole, Role
 from auth.deps import get_current_user
+from services.class_access import class_role
 from services.embed_validator import is_allowed_embed_url, transform_to_embed_url
 from services.markdown import sanitize_md
 
@@ -29,19 +30,7 @@ async def _class_access(db, class_id, user):
     cls = r.scalar_one_or_none()
     if not cls:
         raise HTTPException(404, "Lớp học không tồn tại")
-    roles = await _get_user_roles(db, user.id)
-    if "admin" in roles or cls.teacher_id == user.id:
-        return cls, "teacher"
-    er = await db.execute(
-        select(Enrollment).where(
-            Enrollment.class_id == class_id,
-            Enrollment.user_id == user.id,
-            Enrollment.status == "active",
-        )
-    )
-    if er.scalar_one_or_none():
-        return cls, "student"
-    raise HTTPException(403, "Không có quyền truy cập lớp học này")
+    return cls, await class_role(db, cls, user)
 
 
 # ─── schemas ────────────────────────────────────────────────────

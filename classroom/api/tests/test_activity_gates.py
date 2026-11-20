@@ -143,8 +143,9 @@ def test_a_browser_navigation_is_redirected_into_heystat(wiring):
     db = _Db(**{"users": USER, "class_files": _file(), "assignments": []})
     response = asyncio.run(class_files.open_file_from_browser(CID, FID, request, db))
     assert response.status_code == 302
+    # `/` now belongs to the public home page, so HeyStat is entered through /app.
     assert response.headers["location"].startswith(
-        "/#open?url=https%3A%2F%2Fheystat.pedu.vn%2Fapi%2Fv1%2Ffiles%2Fot%2F")
+        "/app#open?url=https%3A%2F%2Fheystat.pedu.vn%2Fapi%2Fv1%2Ffiles%2Fot%2F")
     assert "title=de.sav" in response.headers["location"]
 
 

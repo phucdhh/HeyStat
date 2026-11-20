@@ -63,6 +63,24 @@ class UserRole(Base):
     role: Mapped["Role"] = relationship(back_populates="user_roles")
 
 
+class TeacherRequest(Base):
+    """A registered user asking an admin to unlock course creation."""
+
+    __tablename__ = "teacher_requests"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    institution: Mapped[Optional[str]] = mapped_column(String(255))
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = now_col()
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    reviewer: Mapped[Optional["User"]] = relationship(foreign_keys=[reviewed_by])
+
+
 # ─────────────────────────── CLASSES ────────────────────────────
 
 class Class(Base):
@@ -99,8 +117,13 @@ class Enrollment(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     enrolled_at: Mapped[datetime] = now_col()
     status: Mapped[str] = mapped_column(String(20), default="active")
+    # Course-level role: an assistant grades and reads the roster but never owns the class.
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="student", server_default="student")
 
-    __table_args__ = (UniqueConstraint("class_id", "user_id", name="uq_enrollment"),)
+    __table_args__ = (
+        UniqueConstraint("class_id", "user_id", name="uq_enrollment"),
+        CheckConstraint("role IN ('student','assistant')", name="chk_enrollment_role"),
+    )
 
     class_: Mapped["Class"] = relationship(back_populates="enrollments")
     user: Mapped["User"] = relationship(back_populates="enrollments")

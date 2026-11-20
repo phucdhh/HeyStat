@@ -17,6 +17,7 @@ from models import (
 from auth.deps import get_current_user
 from services.markdown import sanitize_md
 from services.assignment_access import require_assignment_open, require_file_open
+from services.class_access import can_grade, class_role
 
 router = APIRouter(tags=["assignments"])
 
@@ -61,12 +62,7 @@ async def _is_enrolled(db, class_id, user_id):
 
 
 async def _class_access_role(db, cls, user):
-    roles = await _get_user_roles_set(db, user.id)
-    if "admin" in roles or cls.teacher_id == user.id:
-        return "teacher"
-    if await _is_enrolled(db, cls.id, user.id):
-        return "student"
-    raise HTTPException(403, "Không có quyền truy cập lớp học này")
+    return await class_role(db, cls, user)
 
 
 async def _ensure_file_in_class(db, class_id, file_id):
@@ -192,7 +188,7 @@ async def list_assignments(
     access = await _class_access_role(db, cls, current_user)
     r = await db.execute(select(Assignment).where(Assignment.class_id == class_id))
     assignments = r.scalars().all()
-    return [_to_response(a, with_key=access == "teacher") for a in assignments]
+    return [_to_response(a, with_key=can_grade(access)) for a in assignments]
 
 
 @router.post("/classes/{class_id}/assignments", status_code=201, response_model=AssignmentResponse)
@@ -244,7 +240,7 @@ async def get_assignment(
     cls = await _get_class_or_404(db, class_id)
     access = await _class_access_role(db, cls, current_user)
     a = await _get_assignment_or_404(db, assignment_id, class_id)
-    return _to_response(a, with_key=access == "teacher")
+    return _to_response(a, with_key=can_grade(access))
 
 
 @router.patch("/classes/{class_id}/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -320,7 +316,7 @@ async def get_assignment_dataset(
     a = await _get_assignment_or_404(db, assignment_id)
     cls = await _get_class_or_404(db, a.class_id)
     access = await _class_access_role(db, cls, current_user)
-    if access != "teacher":
+    if not can_grade(access):
         require_assignment_open(a)
     if not a.file_id:
         raise HTTPException(404, "Bài tập không kèm bộ dữ liệu")
@@ -330,7 +326,7 @@ async def get_assignment_dataset(
     if not cf:
         raise HTTPException(404, "Bộ dữ liệu không tồn tại")
 
-    if access != "teacher":
+    if not can_grade(access):
         await require_file_open(db, cf)
 
     from config import get_settings

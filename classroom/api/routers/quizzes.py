@@ -15,6 +15,7 @@ from models import (
     Enrollment, User, UserRole, Role,
 )
 from auth.deps import get_current_user
+from services.class_access import class_role
 from services.markdown import sanitize_md
 from services.quiz_grader import calculate_score
 
@@ -33,17 +34,7 @@ async def _class_access(db, class_id, user):
     cls = r.scalar_one_or_none()
     if not cls:
         raise HTTPException(404)
-    roles = await _get_user_roles(db, user.id)
-    if "admin" in roles or cls.teacher_id == user.id:
-        return cls, "teacher"
-    er = await db.execute(
-        select(Enrollment).where(
-            Enrollment.class_id == class_id, Enrollment.user_id == user.id, Enrollment.status == "active"
-        )
-    )
-    if er.scalar_one_or_none():
-        return cls, "student"
-    raise HTTPException(403)
+    return cls, await class_role(db, cls, user)
 
 
 # ─── schemas ────────────────────────────────────────────────────

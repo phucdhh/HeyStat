@@ -77,3 +77,8 @@ def require_admin():
 
 def require_teacher():
     return require_roles("admin", "teacher")
+
+
+def require_moderator():
+    """Community content moderation — no access to system configuration."""
+    return require_roles("admin", "moderator")

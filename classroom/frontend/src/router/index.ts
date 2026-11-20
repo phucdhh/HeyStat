@@ -28,6 +28,7 @@ const router = createRouter({
         { path: 'help', name: 'Help', component: () => import('@/pages/HelpPage.vue') },
         { path: 'teacher', name: 'TeacherDashboard', component: () => import('@/pages/TeacherDashboardPage.vue'), meta: { requiresTeacher: true } },
         { path: 'admin', name: 'AdminPanel', component: () => import('@/pages/AdminPanelPage.vue'), meta: { requiresAdmin: true } },
+        { path: 'moderation', name: 'Moderation', component: () => import('@/pages/ModerationPage.vue'), meta: { requiresModerator: true } },
         { path: 'profile', name: 'Profile', component: () => import('@/pages/ProfilePage.vue') },
       ],
     },
@@ -43,9 +44,13 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
+  if (to.meta.requiresAuth || to.meta.requiresTeacher || to.meta.requiresModerator || to.meta.requiresAdmin) {
+    await auth.ensureSession()
+  }
   if (to.meta.guest && auth.isLoggedIn) return { name: 'Dashboard' }
   if (to.meta.requiresAuth && !auth.isLoggedIn) return { name: 'Login', query: { redirect: to.fullPath } }
   if (to.meta.requiresTeacher && !auth.isTeacher) return { name: 'Dashboard' }
+  if (to.meta.requiresModerator && !auth.isModerator) return { name: 'Dashboard' }
   if (to.meta.requiresAdmin && !auth.isAdmin) return { name: 'Dashboard' }
 })
 

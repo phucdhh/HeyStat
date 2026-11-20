@@ -28,12 +28,15 @@
         <RouterLink to="/help" class="nav-link">
           <span class="nav-icon">📖</span> Hướng dẫn đọc kết quả
         </RouterLink>
-        <a href="/" target="_blank" class="nav-link heystat-link">
-          <span class="nav-icon">📊</span> Mở HeyStat
+        <a href="/app" target="_blank" class="nav-link heystat-link">
+          <span class="nav-icon">📊</span> Mở Jamovi
           <span class="ext-icon">↗</span>
         </a>
         <RouterLink v-if="auth.isTeacher" to="/teacher" class="nav-link">
           <span class="nav-icon">🎓</span> Quản lý lớp
+        </RouterLink>
+        <RouterLink v-if="auth.isModerator" to="/moderation" class="nav-link">
+          <span class="nav-icon">🛡️</span> Kiểm duyệt
         </RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/admin" class="nav-link">
           <span class="nav-icon">⚙️</span> Quản trị

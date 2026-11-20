@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeyStat — Thực hành thống kê với jamovi cho lớp học</title>
+<meta name="description" content="HeyStat là nền tảng thực hành thống kê miễn phí: làm việc trực tiếp với jamovi trên trình duyệt, nhận và nộp file .omv theo lớp học, chấm điểm và ôn trắc nghiệm.">
+<link rel="icon" href="/classroom/favicon.svg">
+<style>
+  :root{
+    --amber-50:#FFFBEB; --amber-100:#FEF3C7; --amber-200:#FDE68A; --amber-300:#FCD34D;
+    --amber-400:#FBBF24; --amber-500:#F59E0B; --amber-600:#D97706; --amber-700:#B45309;
+    --amber-800:#92400E; --amber-900:#78350F;
+    --ink:#1F2937; --muted:#6B7280; --line:#E5E7EB; --bg:#FFFFFF; --soft:#FAFAFA;
+    --radius:14px; --shadow:0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --max:1120px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; color:var(--ink); background:var(--bg); line-height:1.65;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--amber-700); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--max); margin:0 auto; padding:0 20px}
+  .muted{color:var(--muted)}
+  .small{font-size:.875rem}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  header.site{
+    position:sticky; top:0; z-index:20; background:rgba(255,255,255,.92);
+    backdrop-filter:saturate(180%) blur(8px); border-bottom:1px solid var(--line);
+  }
+  .nav{display:flex; align-items:center; gap:18px; height:64px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--ink); font-size:1.05rem}
+  .brand:hover{text-decoration:none}
+  .mark{
+    width:32px;height:32px;border-radius:9px;flex:none;
+    background:linear-gradient(135deg,var(--amber-400),var(--amber-600));
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:.8rem;letter-spacing:.02em;
+  }
+  .nav nav{margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .nav nav a{padding:8px 10px; border-radius:10px; color:var(--ink); font-size:.93rem}
+  .nav nav a:hover{background:var(--amber-50); text-decoration:none; color:var(--amber-800)}
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:11px 18px; border-radius:11px; font-weight:600; font-size:.95rem;
+    border:1px solid transparent; cursor:pointer; white-space:nowrap;
+  }
+  .btn:hover{text-decoration:none}
+  .btn-primary{background:var(--amber-500); color:#fff; box-shadow:var(--shadow)}
+  .btn-primary:hover{background:var(--amber-600); color:#fff}
+  .btn-ghost{background:#fff; color:var(--amber-800); border-color:var(--amber-200)}
+  .btn-ghost:hover{background:var(--amber-50); border-color:var(--amber-300)}
+  .btn-lg{padding:14px 24px; font-size:1.02rem; border-radius:13px}
+
+  .hero{background:linear-gradient(180deg,var(--amber-50),#fff 62%); border-bottom:1px solid var(--line); padding:64px 0 56px}
+  .hero-grid{display:grid; grid-template-columns:1.15fr .85fr; gap:44px; align-items:center}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px; font-size:.8rem; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--amber-800);
+    background:var(--amber-100); border:1px solid var(--amber-200); padding:6px 12px; border-radius:999px;
+  }
+  h1{font-size:2.6rem; line-height:1.18; margin:18px 0 14px; letter-spacing:-.02em}
+  h1 span{color:var(--amber-700)}
+  .lead{font-size:1.1rem; color:#374151; margin:0 0 26px; max-width:56ch}
+  .cta{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+  .panel{background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px}
+  .panel h2{margin:0 0 4px; font-size:1rem}
+  .steps{list-style:none; margin:14px 0 0; padding:0; counter-reset:s}
+  .steps li{counter-increment:s; display:flex; gap:12px; padding:10px 0; border-top:1px solid var(--line)}
+  .steps li:first-child{border-top:0}
+  .steps li::before{
+    content:counter(s); flex:none; width:26px;height:26px;border-radius:8px;
+    background:var(--amber-100); color:var(--amber-800); font-weight:700; font-size:.85rem;
+    display:grid; place-items:center;
+  }
+  .who{margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); font-size:.92rem}
+
+  section{padding:64px 0}
+  .sec-head{max-width:70ch; margin-bottom:32px}
+  h2.title{font-size:1.85rem; margin:0 0 10px; letter-spacing:-.01em}
+  .grid{display:grid; gap:18px}
+  .features{grid-template-columns:repeat(3,1fr)}
+  .card{background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow)}
+  .card .ico{width:38px;height:38px;border-radius:10px;background:var(--amber-100);display:grid;place-items:center;font-size:1.1rem;margin-bottom:12px}
+  .card h3{margin:0 0 6px; font-size:1.02rem}
+  .card p{margin:0; color:var(--muted); font-size:.93rem}
+
+  .stats{grid-template-columns:repeat(5,1fr); background:var(--amber-50); border:1px solid var(--amber-200)}
+  .stat{padding:22px 16px; text-align:center}
+  .stat b{display:block; font-size:1.9rem; color:var(--amber-800); line-height:1.2; font-variant-numeric:tabular-nums}
+  .stat span{font-size:.85rem; color:var(--amber-900); opacity:.8}
+
+  .courses{display:grid; gap:14px; grid-template-columns:repeat(3,1fr)}
+  .course{border:1px solid var(--line); border-radius:var(--radius); padding:18px; background:#fff; box-shadow:var(--shadow)}
+  .course h3{margin:0 0 4px; font-size:1.02rem}
+  .tags{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 0}
+  .tag{font-size:.78rem; background:var(--soft); border:1px solid var(--line); color:#4B5563; padding:3px 9px; border-radius:999px}
+  .teacher{font-size:.9rem; color:var(--amber-700); font-weight:600}
+  .empty{border:1px dashed var(--line); border-radius:var(--radius); padding:28px; text-align:center; color:var(--muted)}
+
+  table.roles{width:100%; border-collapse:collapse; font-size:.94rem; background:#fff; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  table.roles th, table.roles td{text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+  table.roles th{background:var(--amber-50); color:var(--amber-900); font-size:.82rem; text-transform:uppercase; letter-spacing:.05em}
+  table.roles tr:last-child td{border-bottom:0}
+  .pill{display:inline-block; font-size:.78rem; font-weight:700; padding:2px 9px; border-radius:999px; background:var(--amber-100); color:var(--amber-800); border:1px solid var(--amber-200)}
+
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .notice{background:var(--amber-50); border:1px solid var(--amber-200); border-radius:var(--radius); padding:18px 20px}
+  .notice h3{margin:0 0 6px; font-size:1rem; color:var(--amber-900)}
+  .notice p{margin:0; color:var(--amber-900); font-size:.93rem}
+
+  footer{border-top:1px solid var(--line); background:var(--soft); padding:36px 0 44px; font-size:.92rem}
+  .foot{display:flex; gap:24px; flex-wrap:wrap; justify-content:space-between; align-items:flex-start}
+  .foot a{color:var(--amber-700)}
+
+  @media (max-width:960px){
+    .hero-grid, .two{grid-template-columns:1fr}
+    .features, .courses{grid-template-columns:1fr 1fr}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    h1{font-size:2.05rem}
+    section{padding:46px 0}
+  }
+  @media (max-width:620px){
+    .features, .courses, .stats{grid-template-columns:1fr}
+    .nav{height:auto; padding:12px 0; flex-wrap:wrap}
+    .nav nav{width:100%; margin-left:0}
+  }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark">HS</span> HeyStat</a>
+    <nav>
+      <a href="#features">Tính năng</a>
+      <a href="#courses">Khoá học</a>
+      <a href="#roles">Ai dùng được</a>
+      <a href="/help">Hướng dẫn</a>
+      <a href="/classroom/login">Đăng nhập</a>
+      <a class="btn btn-primary" id="nav-start" href="/classroom/register">Bắt đầu miễn phí</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-top:56px">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">jamovi chạy trên trình duyệt · Dành cho lớp thống kê</span>
+        <h1>Thực hành thống kê bằng <span>jamovi</span>, nộp bài cho giảng viên ngay trong lớp học</h1>
+        <p class="lead">
+          HeyStat mở jamovi trực tiếp trên máy tính, không cần cài đặt. Giảng viên giao dữ liệu
+          (.csv, .sav, .omv), sinh viên làm phân tích và nộp lại file .omv; việc chấm điểm, nhận xét
+          và ôn trắc nghiệm diễn ra cùng một nơi.
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary btn-lg" id="hero-primary" href="/classroom/register">Tạo tài khoản miễn phí</a>
+          <a class="btn btn-ghost btn-lg" id="hero-jamovi" href="/app" hidden>Vào Jamovi</a>
+          <a class="btn btn-ghost btn-lg" href="/help">Xem hướng dẫn sử dụng</a>
+        </div>
+        <p class="small muted" style="margin-top:16px">
+          Chưa có tài khoản? Bạn vẫn xem được danh sách khoá học đang diễn ra và hướng dẫn dùng Jamovi.
+          Để thực hành hoặc vào lớp học, cần đăng nhập.
+        </p>
+      </div>
+      <div class="panel">
+        <h2>Vào là làm được</h2>
+        <p class="small muted" style="margin:0">Bốn bước cho một bài thực hành thống kê.</p>
+        <ol class="steps">
+          <li><div><b>Đăng nhập</b><div class="small muted">Bằng email trường hoặc email cá nhân.</div></div></li>
+          <li><div><b>Vào lớp học</b><div class="small muted">Nhập mã lớp giảng viên cung cấp.</div></div></li>
+          <li><div><b>Mở file bài tập</b><div class="small muted">Dữ liệu hiện thẳng trong jamovi.</div></div></li>
+          <li><div><b>Lưu và nộp .omv</b><div class="small muted">Giảng viên chấm ngay trên bài làm của bạn.</div></div></li>
+        </ol>
+        <p class="who muted small" id="visitor-line">Đang kiểm tra phiên đăng nhập…</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="title">Tính năng chính</h2>
+        <p class="muted" style="margin:0">Mọi thứ một lớp thống kê cần, trong một đường link.</p>
+      </div>
+      <div class="grid features">
+        <article class="card"><div class="ico">📊</div><h3>jamovi trên trình duyệt</h3><p>Giao diện jamovi đầy đủ, chạy trên máy chủ trường; không cài Java, không lo phiên bản khác nhau giữa các máy.</p></article>
+        <article class="card"><div class="ico">🗂️</div><h3>Dữ liệu do giảng viên giao</h3><p>Tải lên .csv, .sav hay .omv; sinh viên mở đúng file bài tập bằng một link, kể cả file đang khoá chỉ-read.</p></article>
+        <article class="card"><div class="ico">✅</div><h3>Nộp bài .omv, chấm trực tiếp</h3><p>Giảng viên mở bài nộp, xem bảng kết quả và cho điểm kèm nhận xét; sinh viên biết ngay mình được bao nhiêu.</p></article>
+        <article class="card"><div class="ico">👥</div><h3>Lớp học &amp; danh sách</h3><p>Mã lớp, sĩ số, vai trò trong lớp (sinh viên, trợ giảng, giảng viên) và bảng điểm xuất được ra file.</p></article>
+        <article class="card"><div class="ico">🧪</div><h3>Trắc nghiệm thống kê</h3><p>Bộ câu hỏi theo chương, có đáp án và lời giải; làm nhiều lần để tự kiểm tra trước khi thi.</p></article>
+        <article class="card"><div class="ico">🔗</div><h3>Chia sẻ file &amp; bảo mật</h3><p>Gửi link một file .omv cho nhóm, có hạn dùng; phiên làm việc tự tách riêng và có kiểm duyệt nội dung chia sẻ.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+      <div class="grid stats" id="stats">
+        <div class="stat"><b data-stat="total_users">—</b><span>Người dùng</span></div>
+        <div class="stat"><b data-stat="active_classes">—</b><span>Khoá học đang mở</span></div>
+        <div class="stat"><b data-stat="total_teachers">—</b><span>Giảng viên</span></div>
+        <div class="stat"><b data-stat="lessons">—</b><span>Bài học đã công bố</span></div>
+        <div class="stat"><b data-stat="final_submissions">—</b><span>Bài đã nộp</span></div>
+      </div>
+      <p class="small muted" style="margin-top:12px">Số liệu lấy trực tiếp từ hệ thống, cập nhật mỗi lần tải trang.</p>
+    </div>
+  </section>
+
+  <section id="courses" style="padding-top:24px">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="title">Khoá học đang diễn ra</h2>
+        <p class="muted" style="margin:0">Danh sách công khai, chỉ gồm tên lớp, giảng viên và số lượng — không hiển thị email hay dữ liệu cá nhân.</p>
+      </div>
+      <div class="courses" id="course-list">
+        <div class="empty">Đang tải danh sách khoá học…</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roles" style="background:var(--soft); border-top:1px solid var(--line); border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="title">Ai dùng được gì</h2>
+        <p class="muted" style="margin:0">HeyStat phân vai trò ở hai cấp: toàn hệ thống và trong từng khoá học.</p>
+      </div>
+      <table class="roles">
+        <thead><tr><th>Vai trò</th><th>Phạm vi</th><th>Làm được gì</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill">Guest</span></td><td>Chưa đăng nhập</td><td>Xem trang chủ, danh sách khoá học, số liệu và trang Hướng dẫn.</td></tr>
+          <tr><td><span class="pill">User</span></td><td>Toàn hệ thống</td><td>Thực hành Jamovi, dùng bộ dữ liệu mẫu, mở tài liệu, vào lớp bằng mã lớp, nộp bài, làm trắc nghiệm.</td></tr>
+          <tr><td><span class="pill">Moderator</span></td><td>Toàn hệ thống</td><td>Kiểm duyệt nội dung cộng đồng: xem và gỡ link chia sẻ file vi phạm. Không cấu hình máy chủ, không quản trị tài khoản.</td></tr>
+          <tr><td><span class="pill">Admin</span></td><td>Toàn hệ thống</td><td>Quản trị toàn bộ: gán vai trò, duyệt yêu cầu mở quyền tạo lớp, theo dõi tài nguyên máy chủ.</td></tr>
+          <tr><td><span class="pill">Student</span></td><td>Trong một lớp</td><td>Xem bài học, tải dữ liệu, nộp file .omv, làm trắc nghiệm, xem điểm của mình.</td></tr>
+          <tr><td><span class="pill">Assistant</span></td><td>Trong một lớp</td><td>Trợ giảng: chấm bài thực hành, giải đáp thắc mắc. Không xoá khoá học, không sửa điểm tổng kết.</td></tr>
+          <tr><td><span class="pill">Teacher</span></td><td>Trong một lớp</td><td>Tạo khoá học, giao dữ liệu và bài tập, quản lý danh sách, chấm điểm; cần Admin duyệt để mở quyền tạo lớp.</td></tr>
+        </tbody>
+      </table>
+      <div class="two" style="margin-top:22px">
+        <div class="notice">
+          <h3>Bạn là giảng viên?</h3>
+          <p>Sau khi đăng nhập, vào <a href="/classroom">Lớp học</a> và gửi yêu cầu mở quyền tạo lớp. Admin sẽ duyệt để tránh lớp học giả mạo hoặc spam.</p>
+        </div>
+        <div class="notice">
+          <h3>Bạn là sinh viên / học sinh?</h3>
+          <p>Tạo tài khoản, vào <a href="/classroom">Lớp học</a>, nhập mã lớp do giảng viên cung cấp. Mọi bài tập và dữ liệu sẽ xuất hiện ở đó.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div style="max-width:52ch">
+      <a class="brand" href="/" style="margin-bottom:8px"><span class="mark">HS</span> HeyStat</a>
+      <p class="muted" style="margin:8px 0 0">Nền tảng thực hành thống kê với jamovi cho lớp học — xây dựng trên jamovi mã nguồn mở.</p>
+    </div>
+    <div>
+      <div><a href="/help">Hướng dẫn sử dụng</a></div>
+      <div><a href="/classroom">Lớp học của tôi</a></div>
+      <div><a href="/app">Mở Jamovi</a></div>
+      <div class="small muted" style="margin-top:8px">Hỗ trợ: Signal +84 979 555 375</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var API = "/api/v1/public";
+
+  function setText(node, value) { if (node) node.textContent = value; }
+
+  function add(parent, tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = text;
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+
+  function date(v) {
+    if (!v) return "";
+    var d = new Date(v);
+    return isNaN(d) ? "" : d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
+  function renderClasses(rows) {
+    var box = document.getElementById("course-list");
+    box.textContent = "";
+    if (!rows.length) {
+      add(box, "div", "empty", "Chưa có khoá học nào đang mở công khai. Khi giảng viên tạo lớp, danh sách sẽ xuất hiện tại đây.");
+      return;
+    }
+    rows.forEach(function (c) {
+      var card = add(box, "article", "course");
+      add(card, "h3", null, c.title);
+      if (c.teacher_name) add(card, "div", "teacher", c.teacher_name);
+      if (c.description) add(card, "p", "small muted", c.description);
+      var tags = add(card, "div", "tags");
+      add(tags, "span", "tag", (c.student_count || 0) + " sinh viên");
+      add(tags, "span", "tag", (c.lesson_count || 0) + " bài học");
+      add(tags, "span", "tag", (c.assignment_count || 0) + " bài tập");
+      var until = date(c.ends_at);
+      if (until) add(tags, "span", "tag", "đến " + until);
+    });
+  }
+
+  function renderStats(s) {
+    Object.keys(s).forEach(function (key) {
+      var node = document.querySelector('[data-stat="' + key + '"]');
+      if (node) node.textContent = Number(s[key] || 0).toLocaleString("vi-VN");
+    });
+  }
+
+  function renderVisitor(v) {
+    var nav = document.getElementById("nav-start");
+    var hero = document.getElementById("hero-primary");
+    var jamovi = document.getElementById("hero-jamovi");
+    var line = document.getElementById("visitor-line");
+
+    if (v.logged_in) {
+      var name = v.full_name || "bạn";
+      setText(nav, "Vào lớp học");
+      nav.setAttribute("href", "/classroom");
+      setText(hero, "Vào lớp học");
+      hero.setAttribute("href", "/classroom");
+      jamovi.hidden = false;
+      setText(line, "Đang đăng nhập: " + name + (v.roles.length ? " · " + v.roles.join(", ") : ""));
+    } else {
+      setText(nav, "Đăng nhập");
+      nav.setAttribute("href", "/classroom/login");
+      setText(hero, "Tạo tài khoản miễn phí");
+      hero.setAttribute("href", "/classroom/register");
+      jamovi.hidden = true;
+      setText(line, "Bạn đang xem với tư cách Khách — chưa đăng nhập.");
+    }
+  }
+
+  function load(path) {
+    return fetch(path, { credentials: "same-origin" }).then(function (r) {
+      if (!r.ok) throw new Error(path + " → " + r.status);
+      return r.json();
+    });
+  }
+
+  load(API + "/classes").then(renderClasses).catch(function () {
+    var box = document.getElementById("course-list");
+    box.textContent = "";
+    add(box, "div", "empty", "Không tải được danh sách khoá học vui lòng tải lại trang.");
+  });
+  load(API + "/stats").then(renderStats).catch(function () { /* keep the dashes */ });
+  load(API + "/whoami").then(renderVisitor).catch(function () { renderVisitor({ logged_in: false, roles: [] }); });
+})();
+</script>
+</body>
+</html>

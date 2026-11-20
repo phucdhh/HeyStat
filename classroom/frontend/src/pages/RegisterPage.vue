@@ -10,6 +10,10 @@
       <p v-if="success" class="success">{{ success }}</p>
       <button type="submit" :disabled="loading">{{ loading ? 'Đang tạo…' : 'Tạo tài khoản' }}</button>
       <div class="links"><RouterLink to="/login">Đã có tài khoản? Đăng nhập</RouterLink></div>
+      <p class="hint">
+        Tài khoản mới ở mức Người dùng: vào lớp bằng mã lớp, nộp bài và thực hành Jamovi được ngay.
+        Giảng viên cần gửi yêu cầu để Admin mở quyền tạo lớp. Xem <a href="/help" target="_blank">hướng dẫn</a>.
+      </p>
     </form>
   </div>
 </template>
@@ -52,4 +56,6 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .links { text-align: center; font-size: 0.875rem; color: var(--color-text-muted); }
 .links a { color: var(--amber-700); font-weight: 600; text-decoration: none; }
 .links a:hover { color: var(--amber-900); text-decoration: underline; }
+.hint { text-align: center; font-size: 0.8rem; color: var(--color-text-muted); margin: 0.75rem 0 0; }
+.hint a { color: var(--amber-700); }
 </style>

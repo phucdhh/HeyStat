@@ -13,7 +13,9 @@
       <button type="submit" :disabled="loading">{{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}</button>
       <div class="links">
         <RouterLink to="/register">Tạo tài khoản</RouterLink> ·
-        <RouterLink to="/forgot-password">Quên mật khẩu?</RouterLink>
+        <RouterLink to="/forgot-password">Quên mật khẩu?</RouterLink> ·
+        <a href="/">Trang chủ</a> ·
+        <a href="/help">Hướng dẫn</a>
       </div>
     </form>
   </div>
