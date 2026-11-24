@@ -1,5 +1,8 @@
 # Đánh giá 41 thay đổi từ Jamovi upstream
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 **Ngày phân tích**: December 15, 2025  
 **Jamovi versions**: 2.7.13 → 2.7.14  
 **Tổng commits**: 41

@@ -1,11 +1,14 @@
 # HeyStat Configuration Summary
 
+> **Một phần tài liệu này là lịch sử (Mac Mini M2 / `heystat.truyenthong.edu.vn`).**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Project Information
 - **Name:** HeyStat
-- **Base:** Jamovi 2.7.6 (Fork)
-- **Platform:** Mac Mini M2 (Apple Silicon)
+- **Base:** Jamovi 2.7.30 (Fork)
+- **Platform:** Linux LXC (amd64) — bản Mac Mini M2 là lịch sử
 - **License:** AGPL-3.0 (same as Jamovi)
-- **Domain:** heystat.truyenthong.edu.vn
+- **Domain:** heystat.pedu.vn (lịch sử: heystat.truyenthong.edu.vn)
 
 ## Architecture Changes from Ubuntu
 

@@ -1,5 +1,8 @@
 # HeyStat - Triển khai trên Mac Mini M2
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 HeyStat là một ứng dụng phân tích thống kê mã nguồn mở, fork từ Jamovi 2.7.6. Dự án này được cấu hình để chạy trên Mac Mini M2 và được truy cập qua Cloudflare Tunnel.
 
 ## 📋 Yêu cầu hệ thống

@@ -14,15 +14,15 @@ This project was created to:
 **jamovi** - Free and Open Statistical Software
 - Website: https://www.jamovi.org
 - Source Code: https://github.com/jamovi/jamovi
-- License: AGPL3 / GPL2+ (see [LICENSE.md](LICENSE.md))
+- License: AGPL3 / GPL2+ (see [LICENSE.md](../LICENSE.md))
 - Authors: The jamovi team
 
 ## Fork Information
 
 - **Fork Date**: December 2025
-- **Based on**: jamovi 2.7.6
+- **Based on**: jamovi 2.7.30
 - **Maintainer**: HeyStat Team
-- **Repository**: https://github.com/[your-org]/HeyStat
+- **Repository**: https://github.com/phucdhh/HeyStat
 
 ## Key Differences from jamovi
 
@@ -57,7 +57,7 @@ HeyStat complies with jamovi's AGPL3/GPL2+ licenses by:
 
 ### Original jamovi Copyright
 - Copyright (C) 2016-2024 The jamovi team
-- Licensed under AGPL3 / GPL2+ (see [LICENSE.md](LICENSE.md))
+- Licensed under AGPL3 / GPL2+ (see [LICENSE.md](../LICENSE.md))
 
 ### HeyStat Modifications Copyright
 - Copyright (C) 2025 HeyStat Team
@@ -73,7 +73,7 @@ HeyStat complies with jamovi's AGPL3/GPL2+ licenses by:
 ## Contributing
 
 If you want to contribute to:
-- **Original jamovi**: See https://github.com/jamovi/jamovi and [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Original jamovi**: See https://github.com/jamovi/jamovi and [CONTRIBUTING.md](../CONTRIBUTING.md)
 - **HeyStat fork**: Submit issues and pull requests to this repository
 
 ## Acknowledgments
@@ -88,11 +88,11 @@ We are deeply grateful to:
 - **jamovi**: https://www.jamovi.org
 - **jamovi Documentation**: https://www.jamovi.org/user-manual.html
 - **jamovi Community**: https://forum.jamovi.org
-- **HeyStat Deployment**: https://heystat.truyenthong.edu.vn
+- **HeyStat Deployment**: https://heystat.pedu.vn
 
 ## License
 
-This project (HeyStat) inherits the AGPL3/GPL2+ licenses from jamovi. See [LICENSE.md](LICENSE.md) for full license text.
+This project (HeyStat) inherits the AGPL3/GPL2+ licenses from jamovi. See [LICENSE.md](../LICENSE.md) for full license text.
 
 ```
 HeyStat - A fork of jamovi
@@ -112,4 +112,4 @@ GNU Affero General Public License for more details.
 
 ---
 
-**Last Updated**: December 15, 2025
+**Last Updated**: November 25, 2026

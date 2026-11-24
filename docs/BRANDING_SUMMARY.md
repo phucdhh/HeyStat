@@ -1,5 +1,8 @@
 # HeyStat Branding Changes - Summary
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## ✅ Completed Changes (December 15, 2025)
 
 ### 1. Legal & Attribution ✓
@@ -11,7 +14,7 @@
 - License compliance: AGPL3/GPL2+ preserved
 - Trademark notice: Distinguishes HeyStat from jamovi
 
-**Preserved: [LICENSE.md](LICENSE.md)**
+**Preserved: [LICENSE.md](../LICENSE.md)**
 - Original AGPL3/GPL2+ licenses intact
 - No modifications to license terms
 
@@ -32,7 +35,7 @@ Changes:
 
 ### 3. HTML Interface ✓
 
-**Updated: [client/index.html](client/index.html)**
+**Updated: [client/index.html](../client/index.html)**
 
 Changes:
 - `<html aria-label="jamovi">` → `aria-label="HeyStat"`
@@ -44,7 +47,7 @@ Changes:
 
 ### 4. Package Metadata ✓
 
-**Updated: [client/package.json](client/package.json)**
+**Updated: [client/package.json](../client/package.json)**
 
 Changes:
 - `"name": "jamovi-client"` → `"heystat-client"`

@@ -57,6 +57,11 @@ secrets/
 docker-data/
 jamovi-modules/
 
+# Build output and local runtime artifacts
+/classroom/frontend/dist/
+/dump.rdb
+/all_jamovi_logs.txt
+
 # Backup keo tu LXC ve (PostgreSQL/Redis/uploads/Documents)
 backups/
 

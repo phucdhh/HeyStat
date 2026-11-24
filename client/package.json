@@ -1,13 +1,13 @@
 {
   "name": "heystat-client",
-  "version": "2.7.14",
+  "version": "2.7.30",
   "description": "HeyStat client - forked from jamovi",
   "author": "HeyStat Team (original: jamovi team)",
   "repository": {
     "type": "git",
     "url": "https://github.com/phucdhh/HeyStat.git"
   },
-  "homepage": "https://heystat.truyenthong.edu.vn",
+  "homepage": "https://heystat.pedu.vn",
   "scripts": {
     "build": "npm run build:coms && vite build",
     "build:coms": "node -e \"require('fs').copyFileSync('../server/jamovi/server/jamovi.proto', 'assets/coms.proto')\"",

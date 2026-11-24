@@ -1,5 +1,8 @@
 # Jamovi Reverse Proxy Setup Notes
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Fixes Applied
 
 ### 1. Client-side URL Construction (`client/main/host.ts`)

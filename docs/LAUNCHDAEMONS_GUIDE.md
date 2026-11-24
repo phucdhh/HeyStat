@@ -1,5 +1,8 @@
 # HeyStat LaunchDaemons - Auto-Start Configuration
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Overview
 
 HeyStat đã được cấu hình để tự động khởi động khi Mac Mini restart thông qua macOS LaunchDaemons.

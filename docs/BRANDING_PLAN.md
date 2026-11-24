@@ -1,5 +1,8 @@
 # HeyStat Branding Changes - Action Plan
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Overview
 This document outlines all changes needed to rebrand jamovi to HeyStat for public GitHub release.
 
@@ -7,8 +10,8 @@ This document outlines all changes needed to rebrand jamovi to HeyStat for publi
 
 ### 1. Legal & Licensing
 - [x] Created [FORK_NOTICE.md](FORK_NOTICE.md) - Fork attribution and license compliance
-- [x] Preserved original [LICENSE.md](LICENSE.md) - AGPL3/GPL2+ licenses intact
-- [x] Preserved [CONTRIBUTING.md](CONTRIBUTING.md) - Original contribution guidelines
+- [x] Preserved original [LICENSE.md](../LICENSE.md) - AGPL3/GPL2+ licenses intact
+- [x] Preserved [CONTRIBUTING.md](../CONTRIBUTING.md) - Original contribution guidelines
 
 ## 🔄 In Progress
 
@@ -97,7 +100,7 @@ No installation required - works in any modern browser.
 ## For Developers
 
 ### Deployment
-See [deployment documentation](docs/) for:
+See [deployment documentation](README.md) for:
 - Docker deployment (Colima on macOS)
 - Nginx reverse proxy setup
 - Cloudflare Tunnel configuration
@@ -138,7 +141,7 @@ HeyStat is licensed under AGPL3/GPL2+, same as jamovi.
 Copyright (C) 2025 HeyStat Team  
 Copyright (C) 2016-2024 The jamovi team
 
-See [LICENSE.md](LICENSE.md) for full license text.
+See [LICENSE.md](../LICENSE.md) for full license text.
 
 ## Acknowledgments
 

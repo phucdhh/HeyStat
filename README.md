@@ -11,11 +11,11 @@ HeyStat provides:
 - ✅ Vietnamese-friendly deployment
 - ✅ Educational focus for Vietnamese institutions
 
-**Built on jamovi 2.7.6** - See [FORK_NOTICE.md](FORK_NOTICE.md) for attribution.
+**Built on jamovi 2.7.30** - See [FORK_NOTICE.md](docs/FORK_NOTICE.md) for attribution.
 
 ## Quick Access
 
-🌐 **Live Instance**: https://heystat.truyenthong.edu.vn
+🌐 **Live Instance**: https://heystat.pedu.vn
 
 ## Features
 
@@ -28,11 +28,12 @@ HeyStat provides:
 ## For Users
 
 ### Access HeyStat
-Visit: https://heystat.truyenthong.edu.vn
+Visit: https://heystat.pedu.vn
 
 No installation required - works in any modern browser (Chrome, Firefox, Safari, Edge).
 
 ### Documentation
+- [HeyStat documentation index](docs/README.md) — current vs historical docs
 - Based on jamovi - see [jamovi user manual](https://www.jamovi.org/user-manual.html)
 - All jamovi analyses and features are available
 
@@ -42,7 +43,7 @@ No installation required - works in any modern browser (Chrome, Firefox, Safari,
 
 ```bash
 # Clone repository
-git clone [your-repo-url]
+git clone https://github.com/phucdhh/HeyStat.git
 cd HeyStat
 git submodule update --init --recursive
 
@@ -80,15 +81,16 @@ poetry install
 
 ### Deployment Configurations
 
-HeyStat has been optimized for:
-- **Apple Silicon (ARM64)** macOS deployment with Colima
-- **Web-based access** via Cloudflare Tunnel
-- **Port configuration**: 42337-42339 (avoids conflicts)
-- **Auto-start** via LaunchDaemon
+The current production deployment is a **Linux LXC (amd64)**:
+- **HeyStat/jamovi** in Docker on port `42337`
+- **Classroom LMS** (FastAPI + PostgreSQL + Redis + Celery) on port `8080`
+- **Nginx** in front of both, with `/classroom/` and `/api/` routes
+- **Cloudflare** for public HTTPS access
 
-See deployment documentation:
-- [Mac Deployment Guide](README_MAC_DEPLOYMENT.md)
-- [Auto-Start Configuration](AUTOSTART_FIX.md)
+Historical Mac Mini deployment notes are kept for reference only:
+- [Documentation index](docs/README.md) — current vs historical docs
+- [Mac Deployment Guide (historical)](docs/README_MAC_DEPLOYMENT.md)
+- [Auto-Start Configuration (historical)](docs/AUTOSTART_FIX.md)
 
 ### Access Key for Security
 
@@ -195,23 +197,23 @@ where python
 ## Key Differences from jamovi
 
 ### Deployment
-- Optimized for **Apple Silicon (ARM64)** macOS
-- Custom **port configuration** (42337-42339) to avoid conflicts
-- **Cloudflare Tunnel** integration for public access
-- **Auto-start** LaunchDaemon for reliability
+- **Linux LXC (amd64)** production deployment
+- Custom **port configuration** (`42337` for jamovi, `8080` for the LMS API)
+- **Nginx reverse proxy** with WebSocket support and an auth gate
+- **Cloudflare** integration for public HTTPS access
 
 ### Branding
 - Application name: **HeyStat** (was: jamovi)
-- Custom domain: https://heystat.truyenthong.edu.vn
+- Custom domain: https://heystat.pedu.vn
 - Vietnamese localization focus
 
 ### Infrastructure
-- **Docker-based** deployment on Colima (lightweight Docker for macOS)
-- **Nginx reverse proxy** with WebSocket support
+- **Docker Compose**: jamovi core + Classroom LMS
+- **PostgreSQL**, **Redis**, **Celery worker/beat** for the LMS
 - **Isolated Documents folder** for user data
 - **Production-ready** security configuration
 
-See [FORK_NOTICE.md](FORK_NOTICE.md) for complete fork information.
+See [FORK_NOTICE.md](docs/FORK_NOTICE.md) for complete fork information.
 
 ## License
 
@@ -243,7 +245,7 @@ We are grateful to:
 - **jamovi**: https://www.jamovi.org (original project)
 - **jamovi Source**: https://github.com/jamovi/jamovi
 - **jamovi Community**: https://forum.jamovi.org
-- **HeyStat Live**: https://heystat.truyenthong.edu.vn
+- **HeyStat Live**: https://heystat.pedu.vn
 
 ---
 

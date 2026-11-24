@@ -1,5 +1,8 @@
 # HeyStat - Báo cáo Cấu hình cho Mac Mini M2
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Tổng quan
 
 Dự án **HeyStat** là một fork từ **Jamovi 2.7.6** (ứng dụng phân tích thống kê mã nguồn mở) được cấu hình lại để chạy trên Mac Mini M2. Dự án tuân theo giấy phép AGPL-3.0 giống như Jamovi, cho phép chỉnh sửa và phân phối với điều kiện giữ nguyên giấy phép và công khai source code.

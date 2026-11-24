@@ -4,10 +4,30 @@
 
 HeyStat is a proper fork of jamovi. You can safely merge updates from jamovi upstream while preserving HeyStat customizations.
 
+**Current base:** jamovi **v2.7.30**. The `classroom/` LMS is HeyStat-only and is not touched by upstream merges.
+
+## Current fork surface (review these on every merge)
+
+Only this small set of upstream files is intentionally modified:
+
+| File | HeyStat change |
+|---|---|
+| `server/jamovi/server/instance.py` | 1 writer + N observers; broadcast results to observers |
+| `server/jamovi/server/clientconnection.py` | Verify `collab_token`; block observer edits |
+| `server/jamovi/server/session.py` | Env-tunable engine slots and session limits |
+| `server/jamovi/server/i18n.py` | Vietnamese language selection |
+| `server/jamovi/server/server.py` | `X-Forwarded-*` roots, CSP, `config.js` |
+| `server/jamovi/server/__main__.py` | `JAMOVI_LISTEN_PORT` override |
+| `server/jamovi/server/public_roots.py` | New HeyStat-only helper for reverse proxies |
+
+Everything else in `client/`, `server/`, `engine/`, `jmv/`, `plots/` should follow upstream unless a merge commit says otherwise.
+
+> `docker-compose.yaml` bind-mounts `session.py`, `i18n.py`, and `public_roots.py` from the repo into the image. If upstream changes those files, update both the source tree and the mount list; otherwise the image and the mounted file can disagree.
+
 ## Setup Upstream Remote
 
 ```bash
-cd /Users/mac/HeyStat
+cd /path/to/HeyStat
 git remote add upstream https://github.com/jamovi/jamovi.git
 git fetch upstream
 ```
@@ -55,32 +75,30 @@ git push origin main --force-with-lease
 
 ### Files HeyStat Modified
 
-**Branding Files (Keep HeyStat version)**:
-- `client/index.html` - Keep "HeyStat", "HeyStat - Statistical Analysis"
-- `client/package.json` - Keep "heystat-client", HeyStat repo URL
-- `README.md` - Keep HeyStat introduction, add jamovi updates to appropriate sections
+**Branding / documentation (keep HeyStat version)**:
+- `client/index.html`, `client/package.json` — HeyStat name and repository URL
+- `README.md` — HeyStat introduction and current deployment notes
+- `docs/` — HeyStat-only; upstream never touches this directory
 
-**Deployment Config (Merge carefully)**:
+**Deployment config (merge carefully)**:
 - `docker-compose.yaml`:
-  - Keep: ports 42337-42339, container name "heystat", platform linux/arm64
-  - Keep: JAMOVI_HOST_A/B/C with heystat.truyenthong.edu.vn
-  - Keep: volumes mounting ./Documents
-  - Accept: New environment variables, new dependencies from jamovi
-  
+  - Keep: container name `heystat`, host ports `42337`, volumes for `Documents`/`jamovi-modules`, session limits
+  - Keep: `JAMOVI_HOST_A/B/C` for the current domain (`heystat.pedu.vn` in production)
+  - Accept: new environment variables, dependencies and upstream defaults
 - `.gitignore`:
-  - Keep: HeyStat additions (logs/, Documents/, *.local)
-  - Accept: New patterns from jamovi
+  - Keep: HeyStat additions (`logs/`, `Documents/`, `*.local`, `classroom/frontend/dist/`)
+  - Accept: new patterns from jamovi
 
-**Server Modifications (Review carefully)**:
-- `server/jamovi/server/server.py`:
-  - Keep: Proxy headers handling (X-Forwarded-*, X-Real-IP)
-  - Keep: WebSocket Origin/Host header modifications
-  - Accept: Bug fixes, new features from jamovi
-  - **Action**: Manually merge both changes
+**Server modifications (review carefully)**:
+- `server/jamovi/server/instance.py` — **highest risk**: writer/observer broadcast
+- `server/jamovi/server/clientconnection.py` — **highest risk**: token verification and write blocking
+- `server/jamovi/server/server.py` — proxy headers, CSP and `config.js` roots
+- `server/jamovi/server/__main__.py` — `JAMOVI_LISTEN_PORT`
+- `server/jamovi/server/session.py` — env-tunable engine/session limits
+- `server/jamovi/server/i18n.py` — Vietnamese language handling
+- `server/jamovi/server/public_roots.py` — HeyStat-only helper
 
-- `server/jamovi/server/__main__.py`:
-  - Keep: Proxy header imports and handling
-  - Accept: Other jamovi changes
+**Action:** manually merge `instance.py` and `clientconnection.py`; take upstream fixes for the rest and re-apply the HeyStat lines listed above.
 
 ### Conflict Resolution Commands
 
@@ -133,12 +151,11 @@ git checkout --ours client/index.html
 
 # Keep from HeyStat:
 ports:
-  - '42337:42337'
-  - '42338:42338'
-  - '42339:42339'
+  - '42337:80'
 container_name: heystat
-platform: linux/arm64
-JAMOVI_HOST_A: 'heystat.truyenthong.edu.vn:42337'
+JAMOVI_HOST_A: 'heystat.pedu.vn'
+JAMOVI_HOST_B: 'heystat.pedu.vn/analyses'
+JAMOVI_HOST_C: 'heystat.pedu.vn/results'
 
 # Accept from Jamovi:
 - New environment variables
@@ -168,7 +185,7 @@ JAMOVI_HOST_A: 'heystat.truyenthong.edu.vn:42337'
 
 4. Test thoroughly:
    docker compose restart
-   curl -I https://heystat.truyenthong.edu.vn
+   curl -I https://heystat.pedu.vn
 
 5. Commit:
    git add server/jamovi/server/server.py
@@ -188,10 +205,10 @@ docker compose restart
 
 # 3. Test basic functionality
 curl -I http://localhost:8082
-curl -I https://heystat.truyenthong.edu.vn
+curl -I https://heystat.pedu.vn
 
 # 4. Test UI
-open https://heystat.truyenthong.edu.vn
+open https://heystat.pedu.vn
 # Verify:
 # - Browser tab shows "HeyStat - Statistical Analysis"
 # - Header shows "HeyStat"
@@ -232,7 +249,7 @@ git reset --hard origin/main
 
 3. **Check HeyStat services**: Ensure everything running
    ```bash
-   /Users/mac/HeyStat/scripts/check-status.sh
+   ./status.sh
    ```
 
 ### During Merge
@@ -244,7 +261,7 @@ git reset --hard origin/main
 2. **Test incrementally**: After each conflict resolution
    ```bash
    docker compose restart
-   curl -I https://heystat.truyenthong.edu.vn
+   curl -I https://heystat.pedu.vn
    ```
 
 ### After Merge
@@ -300,7 +317,7 @@ git commit
 # 6. Test
 cd client && npm run build && cd ..
 docker compose restart
-/Users/mac/HeyStat/scripts/check-status.sh
+./status.sh
 
 # 7. If OK, merge to main
 git checkout main

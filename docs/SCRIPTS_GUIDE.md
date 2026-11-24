@@ -1,5 +1,8 @@
 # HeyStat Management Scripts
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 Tập hợp scripts quản lý HeyStat ở thư mục gốc dự án.
 
 ## Scripts Chính

@@ -1,5 +1,8 @@
 # ✅ HeyStat Auto-Start Fix - December 15, 2025
 
+> **Tài liệu lịch sử — Mac Mini M2 / `heystat.truyenthong.edu.vn`.**
+> Production hiện tại là Linux LXC tại https://heystat.pedu.vn. Xem [README.md](README.md) để biết tài liệu đang dùng.
+
 ## Vấn đề gặp phải
 
 Sau khi restart Mac Mini, truy cập https://heystat.truyenthong.edu.vn gặp lỗi **502 Bad Gateway**.
@@ -29,7 +32,7 @@ start-heystat-complete.sh
 ## Files đã tạo/cập nhật
 
 ### 1. Script startup hoàn chỉnh
-**File**: [scripts/start-heystat-complete.sh](scripts/start-heystat-complete.sh)
+**File**: [scripts/start-heystat-complete.sh](../scripts/start-heystat-complete.sh)
 
 - Khởi động Colima với user `mac`
 - Tự động detect đường dẫn Docker binary
@@ -38,14 +41,14 @@ start-heystat-complete.sh
 - Log chi tiết vào: `/Users/mac/HeyStat/logs/heystat-complete-startup.log`
 
 ### 2. LaunchDaemon mới
-**File**: [launch-daemons/com.heystat.complete.plist](launch-daemons/com.heystat.complete.plist)
+**File**: [launch-daemons/com.heystat.complete.plist](../launch-daemons/com.heystat.complete.plist)
 
 - Chạy với user `mac` (tránh quyền root)
 - `RunAtLoad=true`: Tự động chạy khi boot
 - `KeepAlive=false`: Chạy một lần rồi dừng
 
 ### 3. Script kiểm tra trạng thái
-**File**: [scripts/check-status.sh](scripts/check-status.sh) (đã cập nhật)
+**File**: [status.sh](../status.sh) (trước đây là `scripts/check-status.sh`)
 
 - Kiểm tra LaunchDaemon mới
 - Hiển thị trạng thái Docker, Nginx, Cloudflare
