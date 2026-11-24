@@ -79,10 +79,12 @@ COPY --from=node-bin /node /usr/local
 ARG JAMOVI_ROOT=.
 ARG MODS_ROOT=$JAMOVI_ROOT/docker/mods
 
-COPY $JAMOVI_ROOT/client/package.json $MODS_ROOT/client/package.jso[n] /tmp/source/client/
+# Use the lockfile: a plain `npm install` resolves vitest/* against today's
+# registry and npm 10.9.2 (Node 22) crashes on its peer graph.
+COPY $JAMOVI_ROOT/client/package.json $JAMOVI_ROOT/client/package-lock.json $MODS_ROOT/client/package.jso[n] /tmp/source/client/
 WORKDIR /tmp/source/client
 
-RUN npm install
+RUN npm ci
 RUN mkdir -p /usr/lib/jamovi/client
 
 COPY $JAMOVI_ROOT/client/                           /tmp/source/client/
@@ -177,6 +179,19 @@ RUN jmc --install . --to /usr/lib/jamovi/modules --rhome $R_HOME --rlibs /usr/li
 COPY $JAMOVI_ROOT/plots/ /tmp/source/plots
 WORKDIR /tmp/source/plots
 RUN jmc --install . --to /usr/lib/jamovi/modules --rhome $R_HOME --rlibs /usr/lib/jamovi/modules/base/R --patch-version --skip-deps
+
+##### MORETESTS #####
+
+# moretests is an add-on: it extends jamovi's own t-tests, ANOVA, ANCOVA and
+# regression analyses (Kolmogorov-Smirnov, Anderson-Darling, Bartlett).
+# It has to live in the image because JAMOVI_SUPPRESS_USER_MODULES=1 stops the
+# engine from reading the mounted user-modules directory.
+COPY $JAMOVI_ROOT/moretests/ /tmp/source/moretests
+WORKDIR /tmp/source/moretests
+# jmc's R CMD INSTALL checks Imports even with --skip-deps, so nortest must be
+# visible in the base module library before compiling moretests.
+RUN R -e "install.packages('nortest', lib='/usr/lib/jamovi/modules/base/R', INSTALL_opts=c('--no-data', '--no-help', '--no-demo', '--no-html', '--no-docs', '--no-multiarch', '--clean'))" && \
+    jmc --install . --to /usr/lib/jamovi/modules --rhome $R_HOME --rlibs /usr/lib/jamovi/modules/base/R --patch-version --skip-deps
 
 
 ##### I18N #####

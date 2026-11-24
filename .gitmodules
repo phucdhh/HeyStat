@@ -11,3 +11,6 @@
 [submodule "plots"]
 	path = plots
 	url = https://github.com/jamovi/jmvplots.git
+[submodule "moretests"]
+	path = moretests
+	url = https://github.com/jonathon-love/moretests.git

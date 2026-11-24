@@ -24,6 +24,13 @@ Everything else in `client/`, `server/`, `engine/`, `jmv/`, `plots/` should foll
 
 > `docker-compose.yaml` bind-mounts `session.py`, `i18n.py`, and `public_roots.py` from the repo into the image. If upstream changes those files, update both the source tree and the mount list; otherwise the image and the mounted file can disagree.
 
+**Bundled third-party module:** `docker/jamovi-Dockerfile` also compiles the
+[`moretests`](https://github.com/jonathon-love/moretests) add-on (pinned as a
+git submodule) into `/usr/lib/jamovi/modules/moretests`. Keep that block on
+upstream merges — `JAMOVI_SUPPRESS_USER_MODULES=1` means the container cannot
+load it from `jamovi-modules/`. Its R dependency `nortest` is installed into
+the module's own R library in the same step.
+
 ## Setup Upstream Remote
 
 ```bash

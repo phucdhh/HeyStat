@@ -20,6 +20,7 @@ HeyStat provides:
 ## Features
 
 - Descriptive statistics, T-tests, ANOVA, regression
+- Extra normality/variance tests (Kolmogorov-Smirnov, Anderson-Darling, Bartlett) via the [moretests](https://github.com/jonathon-love/moretests) module
 - Data visualization and plotting
 - CSV/SPSS/SAS file import
 - Real-time analysis updates
