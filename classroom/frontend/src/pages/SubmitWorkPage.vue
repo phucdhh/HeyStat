@@ -210,7 +210,8 @@ const {
 
 // Re-open the workspace automatically when a scheduled start time is reached.
 watch(isUpcoming, (upcoming) => {
-  if (!upcoming && assignment.value && !session.value && !submitSuccess.value) void start(assignmentId)
+  if (!upcoming && active && assignment.value?.is_open !== false && assignment.value
+      && !session.value && !submitSuccess.value) void start(assignmentId)
 })
 
 const collabRole = computed(() => session.value?.collab_role)
