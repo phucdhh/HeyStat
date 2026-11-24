@@ -159,6 +159,8 @@ class Assignment(Base):
     assignment_type: Mapped[str] = mapped_column(String(20), default="homework")
     is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     max_score: Mapped[float] = mapped_column(Numeric(5, 2), default=10.00)
+    # NULL = no scheduled start (open as soon as the teacher opens the assignment).
+    start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     allow_resubmit: Mapped[bool] = mapped_column(Boolean, default=True)
     group_size: Mapped[int] = mapped_column(SmallInteger, default=1)

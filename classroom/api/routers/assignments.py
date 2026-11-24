@@ -16,13 +16,22 @@ from models import (
 )
 from auth.deps import get_current_user
 from services.markdown import sanitize_md
-from services.assignment_access import require_assignment_open, require_file_open
+from services.assignment_access import assignment_visible, require_assignment_open, require_file_open
 from services.class_access import can_grade, class_role
 
 router = APIRouter(tags=["assignments"])
 
 
 # ─── helpers ────────────────────────────────────────────────────
+
+def _validate_window(start_at, deadline):
+    """A scheduled start must be before the deadline."""
+    if start_at is None:
+        return
+    start = start_at.replace(tzinfo=timezone.utc) if start_at.tzinfo is None else start_at
+    end = deadline.replace(tzinfo=timezone.utc) if deadline.tzinfo is None else deadline
+    if start >= end:
+        raise HTTPException(400, "Giờ bắt đầu phải trước hạn nộp")
 
 async def _get_user_roles_set(db, user_id):
     r = await db.execute(
@@ -86,6 +95,7 @@ class AssignmentCreate(BaseModel):
     assignment_type: str = "homework"
     is_open: Optional[bool] = None
     max_score: float = 10.0
+    start_at: Optional[datetime] = None
     deadline: datetime
     allow_resubmit: bool = True
     group_size: int = Field(1, ge=1, le=20)
@@ -99,6 +109,7 @@ class AssignmentUpdate(BaseModel):
     description: Optional[str] = None
     assignment_type: Optional[str] = None
     is_open: bool = True
+    start_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
     max_score: Optional[float] = None
     allow_resubmit: Optional[bool] = None
@@ -117,6 +128,7 @@ class AssignmentResponse(BaseModel):
     assignment_type: str
     is_open: bool
     max_score: float
+    start_at: Optional[datetime] = None
     deadline: datetime
     allow_resubmit: bool
     group_size: int
@@ -136,12 +148,12 @@ def _to_response(a: Assignment, *, with_key: bool) -> AssignmentResponse:
         {k: q[k] for k in ("id", "label", "type", "points", "comment", "comment_hint") if k in q}
         for q in (a.answer_key or {}).get("questions", [])
     ]
-    visible = with_key or a.is_open
+    visible = with_key or assignment_visible(a)
     return AssignmentResponse(
         id=str(a.id), class_id=str(a.class_id), title=a.title,
         description=a.description if visible else "", assignment_type=a.assignment_type,
         is_open=a.is_open,
-        max_score=float(a.max_score), deadline=a.deadline,
+        max_score=float(a.max_score), start_at=getattr(a, 'start_at', None), deadline=a.deadline,
         allow_resubmit=a.allow_resubmit, group_size=a.group_size,
         allow_sharing=a.allow_sharing,
         file_id=str(a.file_id) if a.file_id and visible else None,
@@ -204,6 +216,7 @@ async def create_assignment(
         raise HTTPException(403, "Chỉ giáo viên mới tạo được bài tập")
     if body.assignment_type not in ("homework", "project", "exam"):
         raise HTTPException(400, "Loại bài tập không hợp lệ")
+    _validate_window(body.start_at, body.deadline)
     if body.assignment_type == "exam":
         body.allow_sharing = False
         body.allow_resubmit = False
@@ -219,6 +232,7 @@ async def create_assignment(
         assignment_type=body.assignment_type,
         is_open=is_open,
         max_score=body.max_score,
+        start_at=body.start_at,
         deadline=body.deadline,
         allow_resubmit=body.allow_resubmit,
         group_size=body.group_size,
@@ -257,6 +271,9 @@ async def update_assignment(
     a = await _get_assignment_or_404(db, assignment_id, class_id)
     # exclude_unset keeps an explicit null, so clearing the grading config works
     updates = body.model_dump(exclude_unset=True)
+    effective_deadline = updates.get("deadline", a.deadline)
+    if effective_deadline is not None:
+        _validate_window(updates.get("start_at", getattr(a, 'start_at', None)), effective_deadline)
     if "description" in updates:
         updates["description"] = sanitize_md(updates["description"])
     if "assignment_type" in updates and updates["assignment_type"] not in ("homework", "project", "exam"):

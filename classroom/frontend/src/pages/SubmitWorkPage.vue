@@ -8,6 +8,7 @@
         <span v-else-if="collabRole === 'observer'" class="badge observer">Observer (xem)</span>
       </div>
       <div class="metadata">
+        <span v-if="assignment?.start_at" class="deadline">Bắt đầu: {{ fmt(assignment.start_at) }}</span>
         <span v-if="assignment?.deadline" class="deadline">Hạn: {{ fmt(assignment.deadline) }}</span>
         <RouterLink to="/help" class="helplink">Cách đọc kết quả</RouterLink>
       </div>
@@ -50,7 +51,12 @@
       <p v-if="saveError">{{ saveError }}</p>
     </div>
     <p v-if="assignmentClosed" class="closed-notice" role="status">
-      Bài tập đã đóng hoặc chưa mở. Bạn không thể mở phiên làm việc, lưu hay nộp bài lúc này.
+      <template v-if="isUpcoming">
+        Chưa đến giờ bắt đầu ({{ fmt(assignment.start_at) }}). Bạn chưa thể mở phiên làm việc, lưu hay nộp bài. Trang sẽ tự cập nhật khi tới giờ.
+      </template>
+      <template v-else>
+        Bài tập đã đóng hoặc chưa mở. Bạn không thể mở phiên làm việc, lưu hay nộp bài lúc này.
+      </template>
     </p>
 
     <div v-show="!assignmentClosed" class="workspace" :class="{ 'panel-open': panelOpen }">
@@ -135,7 +141,13 @@ const assignmentId = route.params.assignmentId as string
 
 const assignment = ref<any>(null)
 const loadingAssignment = ref(true)
-const assignmentClosed = computed(() => assignment.value?.is_open === false)
+const now = ref(Date.now())
+let clockTimer: number | undefined
+const isUpcoming = computed(() => {
+  const start = assignment.value?.start_at
+  return !!start && new Date(start).getTime() > now.value
+})
+const assignmentClosed = computed(() => assignment.value?.is_open === false || isUpcoming.value)
 const questions = ref<any[]>([])
 const answers = ref<Record<string, string | number>>({})
 const objectiveQuestions = computed(() => questions.value.filter(q => q.type !== 'essay'))
@@ -195,6 +207,11 @@ const {
   session, instanceId, embedUrl, captureName, error: sessionError, starting, capturing,
   frameEl, start, capture, refreshInstance, stop,
 } = useJamoviSession()
+
+// Re-open the workspace automatically when a scheduled start time is reached.
+watch(isUpcoming, (upcoming) => {
+  if (!upcoming && assignment.value && !session.value && !submitSuccess.value) void start(assignmentId)
+})
 
 const collabRole = computed(() => session.value?.collab_role)
 // A loaded session is what the teacher's "đang làm bài" count means; answers typed
@@ -306,6 +323,7 @@ async function submit() {
 }
 
 onMounted(async () => {
+  clockTimer = window.setInterval(() => { now.value = Date.now() }, 15000)
   screenQuery.addEventListener('change', updateScreen)
   try {
     const { data } = await api.get(`/classes/${classId}/assignments/${assignmentId}`)
@@ -323,6 +341,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   active = false
+  if (clockTimer) clearInterval(clockTimer)
   clearInterval(autoSaveTimer)
   screenQuery.removeEventListener('change', updateScreen)
   void presence.setEditing(false)

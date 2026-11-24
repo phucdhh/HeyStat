@@ -12,6 +12,10 @@
       </div>
       <div class="field-row">
         <div class="field">
+          <label>Giờ bắt đầu</label>
+          <input class="form-input" type="datetime-local" v-model="form.start_at" />
+        </div>
+        <div class="field">
           <label>Hạn nộp <span class="req">*</span></label>
           <input class="form-input" type="datetime-local" v-model="form.deadline" />
         </div>
@@ -20,6 +24,7 @@
           <input class="form-input" type="number" v-model.number="form.max_score" min="0" max="100" />
         </div>
       </div>
+      <p class="hint">Để trống = học viên vào ngay khi bài được mở; trước giờ bắt đầu bài bị khoá với học viên.</p>
       <div class="field">
         <label>Loại bài tập</label>
         <select class="form-input" v-model="form.assignment_type">
@@ -46,7 +51,7 @@ import api from '@/api/client'
 const props = defineProps<{ classId: string; assignment: any; show: boolean }>()
 const emit = defineEmits<{ (e: 'update:show', v: boolean): void; (e: 'saved', a: any): void }>()
 
-const form = reactive({ title: '', description: '', deadline: '', max_score: 10, assignment_type: 'homework' })
+const form = reactive({ title: '', description: '', start_at: '', deadline: '', max_score: 10, assignment_type: 'homework' })
 const saving = ref(false)
 const error = ref('')
 
@@ -63,6 +68,7 @@ watch(() => props.show, (v) => {
   Object.assign(form, {
     title: a.title,
     description: a.description,
+    start_at: a.start_at ? isoToLocal(a.start_at) : '',
     deadline: isoToLocal(a.deadline),
     max_score: a.max_score,
     assignment_type: a.assignment_type || 'homework',
@@ -77,11 +83,15 @@ async function save() {
   if (!form.title.trim()) { error.value = 'Vui lòng nhập tiêu đề'; return }
   if (!form.description.trim()) { error.value = 'Vui lòng nhập mô tả'; return }
   if (!form.deadline) { error.value = 'Vui lòng chọn hạn nộp'; return }
+  if (form.start_at && new Date(form.start_at) >= new Date(form.deadline)) {
+    error.value = 'Giờ bắt đầu phải trước hạn nộp'; return
+  }
   saving.value = true
   try {
     const { data } = await api.patch(`/classes/${props.classId}/assignments/${props.assignment.id}`, {
       title: form.title,
       description: form.description,
+      start_at: form.start_at ? new Date(form.start_at).toISOString() : null,
       deadline: new Date(form.deadline).toISOString(),
       max_score: form.max_score,
       assignment_type: form.assignment_type,
@@ -101,8 +111,9 @@ async function save() {
 .modal h2 { color: var(--amber-800); margin: 0 0 1.5rem; font-size: 1.1rem; font-weight: 700; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 1rem; }
 .field > label { font-size: 0.875rem; font-weight: 600; color: var(--amber-800); }
-.field-row { display: flex; gap: 1rem; }
-.field-row .field { flex: 1; }
+.field-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.field-row .field { flex: 1; min-width: 9rem; }
+.hint { font-size: 0.78rem; color: var(--color-text-muted); margin: -0.4rem 0 1rem; }
 .req { color: #DC2626; }
 .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.25rem; }
 .error { color: #DC2626; font-size: 0.85rem; background: #FEF2F2; border: 1px solid #FECACA; padding: 0.4rem 0.6rem; border-radius: 6px; margin: 0 0 0.75rem; }

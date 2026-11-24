@@ -253,3 +253,88 @@ def test_opening_a_locked_assignment_releases_its_dataset(monkeypatch):
     assert result.is_open is True
     assert current.is_open is True
     assert file.student_access is True
+
+
+# ─── scheduled start ("Giờ bắt đầu") ─────────────────────────────
+
+FUTURE = NOW + timedelta(days=30)
+
+
+def test_a_scheduled_start_blocks_access_even_when_the_assignment_is_open():
+    with pytest.raises(HTTPException) as err:
+        require_assignment_open(_assignment(is_open=True, start_at=FUTURE))
+    assert err.value.status_code == 403
+    assert "giờ bắt đầu" in err.value.detail.lower()
+    assert require_assignment_open(_assignment(is_open=True, start_at=NOW)) is None
+    assert require_assignment_open(_assignment(is_open=True, start_at=None)) is None
+
+
+def test_a_naive_start_datetime_is_compared_as_utc():
+    with pytest.raises(HTTPException):
+        require_assignment_open(_assignment(is_open=True, start_at=FUTURE.replace(tzinfo=None)))
+
+
+def test_an_upcoming_assignment_hides_the_prompt_and_dataset_from_students():
+    upcoming = _assignment(is_open=True, start_at=FUTURE)
+    student = _to_response(upcoming, with_key=False)
+    assert student.is_open is True
+    assert student.start_at == FUTURE
+    assert student.description == ""
+    assert student.questions is None
+    assert student.file_id is None
+    assert student.answer_key is None and student.grading_config is None
+    teacher = _to_response(upcoming, with_key=True)
+    assert teacher.description == "Đề bí mật"
+    assert teacher.file_id == str(FID)
+
+
+def test_file_queries_treat_an_upcoming_assignment_as_closed():
+    db = _Db([FID])
+    assert asyncio.run(assignment_access.closed_file_ids(db, CID)) == {FID}
+    assert "start_at IS NULL" in db.sql[0]
+    assert "start_at <=" in db.sql[0]
+    db = _Db([FID])
+    asyncio.run(assignment_access.open_file_ids(db, CID))
+    assert "start_at IS NULL" in db.sql[0]
+
+
+@pytest.mark.parametrize("start,end", [
+    (FUTURE, FUTURE),
+    (FUTURE, FUTURE - timedelta(hours=1)),
+])
+def test_start_time_must_be_before_the_deadline(start, end):
+    with pytest.raises(HTTPException) as err:
+        assignments._validate_window(start, end)
+    assert err.value.status_code == 400
+
+
+def test_a_start_before_the_deadline_is_accepted():
+    assert assignments._validate_window(FUTURE, FUTURE + timedelta(hours=1)) is None
+    assert assignments._validate_window(None, FUTURE) is None
+
+
+def test_a_new_assignment_stores_its_start_time(monkeypatch):
+    start = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    body = _create_body("homework").model_copy(update={
+        "start_at": start, "deadline": start + timedelta(hours=2),
+    })
+    _wire_assignment_routes(monkeypatch, _file(student_access=False))
+    db = _WriteDb()
+    result = asyncio.run(assignments.create_assignment(CID, body, _teacher(), db))
+    assert result.start_at == start
+    assert db.added[0].start_at == start
+
+
+def test_updating_and_clearing_the_start_time(monkeypatch):
+    current = _assignment(is_open=True, deadline=datetime.now(tz=timezone.utc) + timedelta(days=1))
+    _wire_assignment_routes(monkeypatch, _file(), current)
+    db = _WriteDb()
+    start = datetime.now(tz=timezone.utc) + timedelta(hours=2)
+    result = asyncio.run(assignments.update_assignment(
+        CID, AID, AssignmentUpdate(start_at=start), _teacher(), db))
+    assert result.start_at == start
+    assert current.start_at == start
+    result = asyncio.run(assignments.update_assignment(
+        CID, AID, AssignmentUpdate(start_at=None), _teacher(), db))
+    assert result.start_at is None
+    assert current.start_at is None

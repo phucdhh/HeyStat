@@ -41,6 +41,10 @@
       </div>
       <div class="field-row">
         <div class="field">
+          <label>Giờ bắt đầu</label>
+          <input class="form-input" type="datetime-local" v-model="form.start_at" />
+        </div>
+        <div class="field">
           <label>Hạn nộp <span class="req">*</span></label>
           <input class="form-input" type="datetime-local" v-model="form.deadline" />
         </div>
@@ -49,6 +53,10 @@
           <input class="form-input" type="number" v-model.number="form.max_score" min="0" max="100" />
         </div>
       </div>
+      <p class="hint">
+        Giờ bắt đầu để trống nghĩa là học viên vào ngay khi bài được mở. Trước giờ này học viên chưa xem được đề,
+        mở dữ liệu, làm bài hoặc nộp bài (giống như bài bị khoá).
+      </p>
 
       <!-- ── 3. dataset ────────────────────────────────── -->
       <h4>Bộ dữ liệu</h4>
@@ -270,6 +278,7 @@ function localInput(d: Date) {
 const blank = () => ({
   title: '',
   description: '',
+  start_at: '',
   deadline: defaultDeadline(),
   max_score: 10,
   assignment_type: 'homework',
@@ -420,11 +429,15 @@ async function create() {
   if (!form.title.trim()) { error.value = 'Vui lòng nhập tiêu đề'; return }
   if (!form.description.trim()) { error.value = 'Vui lòng nhập mô tả / yêu cầu gửi bài'; return }
   if (!form.deadline) { error.value = 'Vui lòng chọn hạn nộp'; return }
+  if (form.start_at && new Date(form.start_at) >= new Date(form.deadline)) {
+    error.value = 'Giờ bắt đầu phải trước hạn nộp'; return
+  }
   saving.value = true
   try {
     const payload: any = {
       title: form.title.trim(),
       description: form.description,
+      start_at: form.start_at ? new Date(form.start_at).toISOString() : null,
       deadline: new Date(form.deadline).toISOString(),
       max_score: Number(form.max_score) || 0,
       assignment_type: form.assignment_type,

@@ -34,8 +34,10 @@
         <div v-for="a in assignments" :key="a.id" class="list-item">
           <RouterLink :to="`/classes/${classId}/assignments/${a.id}`" class="item-title">{{ a.title }}</RouterLink>
           <span class="meta">Hạn nộp: {{ a.deadline ? fmtDate(a.deadline) : 'Không có' }}</span>
+          <span v-if="a.start_at" class="meta">Bắt đầu: {{ fmtDate(a.start_at) }}</span>
           <span class="kind-tag">{{ kindLabel(a) }}</span>
           <span v-if="a.is_open === false" class="chip miss">Đang khoá</span>
+          <span v-else-if="isUpcoming(a)" class="chip wait">Chưa tới giờ bắt đầu</span>
           <span v-if="a.answer_key?.questions?.length || a.grading_config?.checks?.length" class="chip auto">chấm tự động</span>
           <span v-if="a.file_id" class="meta">📊 có bộ dữ liệu</span>
           <span class="score-tag">{{ a.max_score }} điểm</span>
@@ -374,6 +376,13 @@ const roster = computed(() => {
 
 const exporting = ref(false)
 
+// Scheduled start times need a ticking clock so the "chưa tới giờ" chip clears itself.
+const now = ref(Date.now())
+let clockTimer: number | undefined
+function isUpcoming(a: any) {
+  return !!a?.start_at && new Date(a.start_at).getTime() > now.value
+}
+
 // ── Who is in class right now ───────────────────────
 interface LiveState { online: boolean; editing: boolean }
 const live = ref<Record<string, LiveState>>({})
@@ -674,6 +683,7 @@ function fmtDate(iso: string) {
 }
 
 onMounted(async () => {
+  clockTimer = window.setInterval(() => { now.value = Date.now() }, 15000)
   loading.value = true
   try {
     const [clsRes, assignRes, lessonRes, quizRes, fileRes] = await Promise.all([
@@ -706,6 +716,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
   if (liveTimer) clearInterval(liveTimer)
 })
 </script>

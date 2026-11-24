@@ -8,8 +8,9 @@
         <h1>{{ assignment.title }}</h1>
         <button v-if="auth.isTeacher" class="btn-secondary" :disabled="changingAccess" @click="showEditAssignment = true">✏️ Sửa bài tập</button>
       </div>
-      <p v-if="auth.isTeacher || isOpen" class="desc">{{ assignment.description }}</p>
+      <p v-if="auth.isTeacher || isAccessible" class="desc">{{ assignment.description }}</p>
       <div class="meta-row">
+        <span v-if="assignment.start_at">Giờ bắt đầu: <strong>{{ fmtDate(assignment.start_at) }}</strong></span>
         <span>Hạn nộp: <strong>{{ assignment.deadline ? fmtDate(assignment.deadline) : '—' }}</strong></span>
         <span>Loại: <strong>{{ typeLabel(assignment.assignment_type) }}</strong></span>
         <span v-if="assignment.max_score">Điểm tối đa: <strong>{{ assignment.max_score }}</strong></span>
@@ -27,12 +28,19 @@
           </button>
         </div>
         <p>Khoá bài sẽ chặn học viên xem đề, mở dữ liệu và nộp bài. Không thể thu hồi tệp đã tải xuống hoặc dữ liệu đang mở.</p>
+        <p v-if="isUpcoming">Bài đã mở nhưng chưa tới giờ bắt đầu ({{ fmtDate(assignment.start_at) }}). Học viên vẫn chưa truy cập được.</p>
         <p v-if="assignment.file_id">Mở bài sẽ mở quyền truy cập tệp đính kèm. Nếu tệp dùng chung với bài khác đang khoá, tệp vẫn bị khoá.</p>
         <p v-if="accessError" class="error" role="alert">{{ accessError }}</p>
       </div>
-      <div v-else-if="!isOpen" class="access-panel closed-notice" role="status">
-        <h3>Bài đang khoá</h3>
-        <p>Vui lòng chờ giáo viên mở bài. Bạn chưa thể xem đề, mở dữ liệu, làm bài hoặc nộp bài.</p>
+      <div v-else-if="!isAccessible" class="access-panel closed-notice" role="status">
+        <template v-if="isUpcoming">
+          <h3>Chưa đến giờ bắt đầu</h3>
+          <p>Bài sẽ bắt đầu lúc <strong>{{ fmtDate(assignment.start_at) }}</strong>. Trước giờ này bạn chưa xem được đề, mở dữ liệu, làm bài hoặc nộp bài.</p>
+        </template>
+        <template v-else>
+          <h3>Bài đang khoá</h3>
+          <p>Vui lòng chờ giáo viên mở bài. Bạn chưa thể xem đề, mở dữ liệu, làm bài hoặc nộp bài.</p>
+        </template>
         <p>Lịch sử bài nộp trước đó vẫn được giữ lại.</p>
       </div>
       <p v-if="classFilesError" class="error" role="alert">{{ classFilesError }}</p>
@@ -93,7 +101,7 @@
       <template v-if="!auth.isTeacher">
 
         <!-- Group management -->
-        <div v-if="isOpen && assignment.group_size > 1 && assignment.assignment_type !== 'exam'" class="section">
+        <div v-if="isAccessible && assignment.group_size > 1 && assignment.assignment_type !== 'exam'" class="section">
           <div class="section-header">
             <h3>Nhóm làm bài</h3>
           </div>
@@ -129,7 +137,7 @@
         </div>
 
         <!-- Class files -->
-        <div v-if="isOpen && classFiles.length" class="section">
+        <div v-if="isAccessible && classFiles.length" class="section">
           <h3>Tệp của lớp</h3>
           <div v-for="f in classFiles" :key="f.id" class="file-row">
             <span>{{ f.file_name }}</span>
@@ -152,6 +160,7 @@
               <button v-if="canSubmit" class="btn-primary" @click="openSubmitModal">
                 {{ hasFinalSubmission ? 'Nộp lại' : 'Nộp bài' }}
               </button>
+              <span v-else-if="isUpcoming" class="badge-closed">Chưa tới giờ bắt đầu</span>
               <span v-else-if="isPastDeadline" class="badge-closed">Đã hết hạn</span>
             </div>
           </div>
@@ -218,7 +227,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, computed, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/client'
@@ -240,6 +249,14 @@ const accessError = ref('')
 const classFilesError = ref('')
 const downloadError = ref('')
 const isOpen = computed(() => assignment.value?.is_open === true)
+// A ticking clock so a scheduled assignment unlocks itself without a reload.
+const now = ref(Date.now())
+let clockTimer: number | undefined
+const isUpcoming = computed(() => {
+  const start = assignment.value?.start_at
+  return !!start && new Date(start).getTime() > now.value
+})
+const isAccessible = computed(() => isOpen.value && !isUpcoming.value)
 const mySubmissions = ref<any[]>([])
 const groups = ref<any[]>([])
 const myGroup = ref<any>(null)
@@ -272,7 +289,7 @@ const isPastDeadline = computed(() =>
 
 const hasFinalSubmission = computed(() => mySubmissions.value.some(s => s.is_final))
 const canSubmit = computed(() => {
-  if (!assignment.value || !isOpen.value || isPastDeadline.value) return false
+  if (!assignment.value || !isAccessible.value || isPastDeadline.value) return false
   if (!assignment.value.allow_resubmit && hasFinalSubmission.value) return false
   if (assignment.value.group_size > 1 && assignment.value.assignment_type !== 'exam' && !myGroup.value) return false
   return true
@@ -446,6 +463,7 @@ async function transferLeader(userId: string) {
 }
 
 onMounted(async () => {
+  clockTimer = window.setInterval(() => { now.value = Date.now() }, 15000)
   loading.value = true
   try {
     const [aRes, fRes] = await Promise.all([
@@ -462,6 +480,10 @@ onMounted(async () => {
       await loadGroups()
     }
   } finally { loading.value = false }
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
 })
 </script>
 
