@@ -18,23 +18,43 @@
       <div v-if="loading" class="loading">Đang tải…</div>
       <div v-else-if="!classes.length" class="empty">Chưa có lớp nào.</div>
       <div v-else class="grid">
-        <div v-for="cls in classes" :key="cls.id" class="class-card">
+        <div v-for="cls in classes" :key="cls.id" class="class-card" :class="{ 'menu-open': openMenu === cls.id }">
           <div class="cls-header">
             <div class="cls-title">{{ cls.title }}</div>
-            <span class="status-badge" :class="cls.status">{{ statusLabel(cls.status) }}</span>
+            <div class="cls-header-right">
+              <span class="status-badge" :class="cls.status">{{ statusLabel(cls.status) }}</span>
+              <div class="tool-wrap">
+                <button class="tool-btn" type="button" aria-haspopup="menu"
+                        :aria-expanded="openMenu === cls.id"
+                        :aria-label="`Thao tác cho lớp ${cls.title}`"
+                        title="Thao tác"
+                        @click.stop="toggleMenu(cls.id)">⋮</button>
+                <div v-if="openMenu === cls.id" class="tool-menu" role="menu" @click.stop>
+                  <button class="menu-item" role="menuitem" @click="openRename(cls)">✏️ Đổi tên lớp</button>
+                  <button class="menu-item" role="menuitem" @click="menuAnd(() => exportGrades(cls.id))">📊 Xuất bảng điểm</button>
+                  <button class="menu-item" role="menuitem" @click="menuAnd(() => showKey(cls))">🔑 Mã lớp</button>
+                  <button v-if="cls.status === 'draft'" class="menu-item" role="menuitem"
+                          @click="menuAnd(() => toggleStatus(cls, 'active'))">✅ Kích hoạt lớp</button>
+                  <button v-else-if="cls.status === 'active'" class="menu-item" role="menuitem"
+                          @click="menuAnd(() => toggleStatus(cls, 'draft'))">🔒 Đóng tạm</button>
+                  <div class="menu-sep"></div>
+                  <button class="menu-item danger" role="menuitem" @click="menuAnd(() => askDelete(cls))">🗑️ Xoá lớp</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="cls-dates">
             <span>{{ fmtDate(cls.starts_at) }}</span> – <span>{{ fmtDate(cls.ends_at) }}</span>
           </div>
+          <div class="cls-stats">
+            <span class="stat" title="Số sinh viên đang tham gia lớp">👥 <strong>{{ cls.student_count ?? 0 }}</strong> sinh viên</span>
+            <span class="stat" title="Số bài học trong lớp">📚 <strong>{{ cls.lesson_count ?? 0 }}</strong> bài học</span>
+            <span class="stat" :class="{ dim: !cls.online_count }"
+                  :title="`Số sinh viên đang mở trang lớp trong ${presenceWindow} giây gần nhất`">🟢 <strong>{{ cls.online_count ?? 0 }}</strong> online</span>
+            <span class="stat" title="Số sinh viên đã nộp ít nhất một bài">✅ <strong>{{ cls.submitted_student_count ?? 0 }}</strong> đã nộp bài</span>
+          </div>
           <div class="cls-meta">
             <RouterLink :to="`/classes/${cls.id}`">Xem lớp →</RouterLink>
-          </div>
-          <div class="cls-actions">
-            <button class="btn-sm" @click="exportGrades(cls.id)">Xuất bảng điểm</button>
-            <button class="btn-sm secondary" @click="showKey(cls)">🔑 Mã lớp</button>
-            <button v-if="cls.status === 'draft'" class="btn-sm activate" @click="toggleStatus(cls, 'active')">✅ Kích hoạt</button>
-            <button v-else-if="cls.status === 'active'" class="btn-sm close-btn" @click="toggleStatus(cls, 'draft')">🔒 Đóng tạm</button>
-            <button class="btn-sm delete" @click="askDelete(cls)">🗑️ Xoá</button>
           </div>
         </div>
       </div>
@@ -99,11 +119,30 @@
         </div>
       </div>
     </div>
+
+    <!-- Rename class modal -->
+    <div v-if="renameTarget" class="modal-overlay" @click.self="closeRename">
+      <div class="modal">
+        <h2>Đổi tên lớp</h2>
+        <div class="field">
+          <label>Tên lớp mới <span class="req">*</span></label>
+          <input class="form-input" v-model="renameTitle" maxlength="255"
+                 placeholder="VD: Thống kê y học — Lớp K2024" @keyup.enter="doRename" />
+        </div>
+        <p v-if="renameError" class="error">{{ renameError }}</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" :disabled="renameSaving" @click="closeRename">Huỷ</button>
+          <button class="btn-primary" :disabled="renameSaving || !renameTitle.trim()" @click="doRename">
+            {{ renameSaving ? 'Đang lưu…' : 'Lưu tên mới' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import api from '@/api/client'
 import ClassCreateModal from '@/components/ClassCreateModal.vue'
 import { downloadFile } from '@/utils/download'
@@ -121,6 +160,14 @@ const keyClass = ref<any>(null)
 const deleteTarget = ref<any>(null)
 const deleteRisk = ref<any>(null)
 const deleting = ref(false)
+const openMenu = ref<string | null>(null)
+const renameTarget = ref<any>(null)
+const renameTitle = ref('')
+const renameError = ref('')
+const renameSaving = ref(false)
+// Same window as the presence router: a beat older than this is "offline".
+const presenceWindow = 90
+let statsTimer: number | undefined
 
 function fmtDate(iso: string) {
   if (!iso) return ''
@@ -134,6 +181,73 @@ async function load() {
     classes.value = data
     if (data.length) selectedClass.value = data[0].id
   } finally { loading.value = false }
+}
+
+/** Refresh the live counters without flashing the whole page. */
+async function refreshStats() {
+  if (document.visibilityState !== 'visible') return
+  try {
+    const { data } = await api.get('/classes')
+    for (const fresh of data) {
+      const cls = classes.value.find(c => c.id === fresh.id)
+      if (!cls) continue
+      cls.title = fresh.title
+      cls.status = fresh.status
+      cls.student_count = fresh.student_count
+      cls.lesson_count = fresh.lesson_count
+      cls.online_count = fresh.online_count
+      cls.submitted_student_count = fresh.submitted_student_count
+    }
+  } catch {
+    // Keep the last numbers; presence is live, not an error state.
+  }
+}
+
+function toggleMenu(id: string) {
+  openMenu.value = openMenu.value === id ? null : id
+}
+
+function closeMenu() {
+  openMenu.value = null
+}
+
+function menuAnd(action: () => void | Promise<void>) {
+  closeMenu()
+  void action()
+}
+
+function openRename(cls: any) {
+  closeMenu()
+  renameTarget.value = cls
+  renameTitle.value = cls.title
+  renameError.value = ''
+}
+
+function closeRename() {
+  if (renameSaving.value) return
+  renameTarget.value = null
+  renameError.value = ''
+}
+
+async function doRename() {
+  const cls = renameTarget.value
+  const title = renameTitle.value.trim()
+  if (!cls || !title || renameSaving.value) return
+  if (title === cls.title) { closeRename(); return }
+  renameSaving.value = true
+  renameError.value = ''
+  try {
+    const { data } = await api.patch(`/classes/${cls.id}`, { title })
+    cls.title = data.title ?? title
+    renameTarget.value = null
+    copiedMsg.value = 'Đã đổi tên lớp.'
+    setTimeout(() => (copiedMsg.value = ''), 3000)
+  } catch (e: any) {
+    const d = e?.response?.data?.detail
+    renameError.value = Array.isArray(d) ? d.map((x: any) => x.msg).join(', ') : d ?? 'Không đổi được tên lớp'
+  } finally {
+    renameSaving.value = false
+  }
 }
 
 async function loadProgress() {
@@ -253,7 +367,16 @@ async function exportGrades(classId: string) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  document.addEventListener('click', closeMenu)
+  void load()
+  statsTimer = window.setInterval(refreshStats, 20000)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeMenu)
+  if (statsTimer) clearInterval(statsTimer)
+})
 </script>
 
 <style scoped>
@@ -266,8 +389,24 @@ h1 { color: var(--amber-800); margin-bottom: 1rem; }
 .page-header { margin-bottom: 1rem; }
 .loading, .empty { padding: 2rem; color: var(--color-text-muted); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1rem; }
-.class-card { background: #fff; border: 1.5px solid var(--amber-200); border-radius: 10px; padding: 1.1rem; box-shadow: 0 1px 4px var(--color-card-shadow); }
-.cls-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.class-card { position: relative; background: #fff; border: 1.5px solid var(--amber-200); border-radius: 10px; padding: 1.1rem; box-shadow: 0 1px 4px var(--color-card-shadow); }
+.class-card.menu-open { z-index: 30; }
+.cls-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
+.cls-title { font-weight: 700; color: var(--amber-800); overflow-wrap: anywhere; }
+.cls-header-right { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+.tool-wrap { position: relative; }
+.tool-btn { width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--amber-700); font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0; }
+.tool-btn:hover, .tool-btn[aria-expanded="true"] { background: var(--amber-100); border-color: var(--amber-300); }
+.tool-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 195px; background: #fff; border: 1px solid var(--amber-200); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.16); padding: 0.3rem; text-align: left; }
+.menu-item { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 0.45rem 0.6rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem; color: #333; font-family: inherit; }
+.menu-item:hover { background: var(--amber-50); }
+.menu-item.danger { color: #B91C1C; }
+.menu-item.danger:hover { background: #FEE2E2; }
+.menu-sep { height: 1px; background: var(--amber-100); margin: 0.25rem 0; }
+.cls-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.3rem 0.8rem; margin: 0.55rem 0 0.65rem; font-size: 0.78rem; color: var(--color-text-muted); }
+.cls-stats .stat { white-space: nowrap; }
+.cls-stats strong { color: var(--amber-800); }
+.cls-stats .dim { opacity: 0.65; }
 .status-badge { font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 10px; }
 .status-badge.active { background: #D1FAE5; color: #065F46; }
 .status-badge.draft { background: #FEF3C7; color: #92400E; }

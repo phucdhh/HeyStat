@@ -2,6 +2,7 @@
 import csv
 import io
 import re
+import time
 import unicodedata
 import uuid
 import secrets
@@ -16,9 +17,11 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import bcrypt as _bcrypt_lib
 
+from auth.redis_client import get_redis
 from database import get_db
 from models import Assignment, Class, ClassFile, Enrollment, Lesson, Quiz, Submission, User, UserRole, Role
 from auth.deps import get_current_user, require_teacher, require_admin
+from routers.presence import read_claims
 from services.class_access import ASSISTANT, STUDENT, TEACHER, can_grade, class_role
 from config import get_settings
 
@@ -67,6 +70,12 @@ class ClassResponse(BaseModel):
     status: str
     created_at: datetime
     my_role: str = STUDENT
+    # Card counters on the teacher dashboard. Online is a live Redis readout,
+    # so it can be 0 while Redis is briefly unavailable.
+    student_count: int = 0
+    lesson_count: int = 0
+    online_count: int = 0
+    submitted_student_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -211,6 +220,61 @@ async def _teacher_names(db: AsyncSession, teacher_ids: set[uuid.UUID]) -> dict[
     return dict(r.all())
 
 
+async def _class_stats(db: AsyncSession, class_ids: list[uuid.UUID]):
+    """Card counters, grouped per class, in a handful of queries.
+
+    The rosters are also returned so online presence can be limited to real
+    students: an assistant counts towards the roster but not "sinh viên".
+    """
+    rosters: dict[uuid.UUID, set[str]] = {}
+    if not class_ids:
+        return {}, {}, {}, rosters
+
+    rows = await db.execute(
+        select(Enrollment.class_id, Enrollment.user_id).where(
+            Enrollment.class_id.in_(class_ids),
+            Enrollment.status == "active",
+            Enrollment.role == "student",
+        )
+    )
+    for class_id, user_id in rows.all():
+        rosters.setdefault(class_id, set()).add(str(user_id))
+
+    rows = await db.execute(
+        select(Lesson.class_id, func.count(Lesson.id))
+        .where(Lesson.class_id.in_(class_ids))
+        .group_by(Lesson.class_id)
+    )
+    lessons = dict(rows.all())
+
+    rows = await db.execute(
+        select(Assignment.class_id, func.count(Submission.student_id.distinct()))
+        .join(Submission, Submission.assignment_id == Assignment.id)
+        .where(Assignment.class_id.in_(class_ids))
+        .group_by(Assignment.class_id)
+    )
+    submitted = dict(rows.all())
+
+    return ({cid: len(users) for cid, users in rosters.items()},
+            lessons, submitted, rosters)
+
+
+async def _online_counts(class_ids: list[uuid.UUID], rosters: dict[uuid.UUID, set[str]]) -> dict[uuid.UUID, int]:
+    counts = {cid: 0 for cid in class_ids}
+    if not class_ids:
+        return counts
+    try:
+        redis = await get_redis()
+        now = time.time()
+        for class_id in class_ids:
+            found = await read_claims(redis, class_id, now)
+            counts[class_id] = sum(1 for user_id in rosters.get(class_id, ()) if user_id in found)
+    except Exception:
+        # Presence is a live bonus; Redis being down must not break the class list.
+        pass
+    return counts
+
+
 # ─── endpoints ──────────────────────────────────────────────────
 
 @router.get("", response_model=list[ClassResponse])
@@ -234,6 +298,12 @@ async def list_classes(
         )
         classes = result.scalars().all()
 
+    # Counters are for the teacher dashboard; do not leak classmates' activity
+    # to a student who happens to load the same list endpoint.
+    is_admin = "admin" in roles
+    class_ids = [c.id for c in classes if is_admin or c.teacher_id == current_user.id]
+    students, lessons, submitted, rosters = await _class_stats(db, class_ids)
+    online = await _online_counts(class_ids, rosters)
     responses = []
     names = await _teacher_names(db, {c.teacher_id for c in classes})
     for c in classes:
@@ -244,6 +314,10 @@ async def list_classes(
             description=c.description, max_students=c.max_students,
             starts_at=c.starts_at, ends_at=c.ends_at, status=c.status,
             created_at=c.created_at,
+            student_count=students.get(c.id, 0),
+            lesson_count=lessons.get(c.id, 0),
+            online_count=online.get(c.id, 0),
+            submitted_student_count=submitted.get(c.id, 0),
         )
         responses.append(d)
     return responses
